@@ -85,6 +85,34 @@ export const firebaseConfig = {
 
 주의: 실제 API 키나 Firebase 설정값을 공개 GitHub 저장소에 직접 올리지 마세요. `src/firebaseConfig.js`, 루트의 `firebaseConfig.js`, `.env`, `.env.*`는 `.gitignore`에 포함되어 있습니다. 예시 파일인 `src/firebaseConfig.example.js`만 저장소에 포함합니다.
 
+## Gemini 분석 실패: Firebase API 키가 유효하지 않습니다
+
+이 오류는 `src/firebaseConfig.js` 파일이 없다는 뜻은 아닐 수 있습니다. 파일이 정상 로드되어도 Firebase 웹앱 config와 AI Logic / Gemini provider 설정이 맞지 않으면 실제 Gemini 호출이 실패하고 앱은 Mock 분석으로 대체됩니다.
+
+가능한 원인:
+
+1. `src/firebaseConfig.js`에 Firebase Console의 web config가 정확히 들어가지 않음
+2. 다른 Firebase 프로젝트의 config를 붙여넣음
+3. Firebase Console에서 등록한 웹앱의 config가 아니라 다른 키를 사용함
+4. Firebase AI Logic에서 Gemini Developer API provider 설정을 완료하지 않음
+5. 설정 직후 백엔드 반영이 아직 안 됨
+6. Google Cloud Console에서 해당 API key가 삭제되었거나 제한 설정이 맞지 않음
+
+해결 순서:
+
+1. Firebase Console → Project settings → General → Your apps로 이동
+2. 현재 웹앱의 SDK setup config를 다시 복사
+3. `src/firebaseConfig.js`의 `firebaseConfig` 객체를 교체
+4. Firebase Console → AI Logic에서 Gemini Developer API provider 설정 완료 여부 확인
+5. 몇 분 기다린 뒤 로컬 서버 새로고침
+6. 다시 피드백 분석 실행
+
+중요:
+
+- Gemini API key를 직접 `src/firebaseConfig.js`에 넣지 마세요.
+- `src/firebaseConfig.js`는 GitHub에 커밋하지 마세요.
+- 공개 배포에서 실제 AI 연결을 켤 경우 App Check 등 보호 설정을 검토하세요.
+
 ## localStorage 주의사항
 
 현재 데이터는 서버 DB가 아니라 브라우저 `localStorage`에 저장됩니다.

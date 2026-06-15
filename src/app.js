@@ -2,6 +2,8 @@ const STORAGE_KEY = "studio-critic-ai:v1";
 const MODEL_NAME = "gemini-2.5-flash-lite";
 const FIREBASE_SDK_VERSION = "11.10.0";
 const MAX_INPUT_CHARS = 4000;
+const AI_INIT_TIMEOUT_MS = 10000;
+const AI_GENERATE_TIMEOUT_MS = 45000;
 const CONFIG_URL = new URL("./src/firebaseConfig.js", window.location.href).href;
 
 const CATEGORIES = [
@@ -56,6 +58,7 @@ const els = {
   analysisCard: $("analysisCard"),
   taskList: $("taskList"),
   outputPanel: $("outputPanel"),
+  aiDiagnosticPanel: $("aiDiagnosticPanel"),
   toast: $("toast"),
   importFile: $("importFile"),
   analyzeBtn: $("analyzeBtn"),
@@ -73,6 +76,20 @@ let selectedFeedbackId = null;
 let outputView = "critic";
 let aiClient = null;
 let isBusy = false;
+let lastAiFallbackReason = "";
+const aiDiagnostics = {
+  configFileStatus: "checking",
+  apiKeyPresent: false,
+  apiKeyMasked: "-",
+  projectId: "-",
+  authDomain: "-",
+  appIdPresent: false,
+  firebaseSdkStatus: "pending",
+  aiLogicSdkStatus: "pending",
+  modelName: MODEL_NAME,
+  lastErrorCode: "-",
+  lastErrorSummary: "아직 오류가 없습니다.",
+};
 
 const aiClientPromise = createAiClient().then((client) => {
   aiClient = client;
@@ -128,7 +145,12 @@ function emptyAnalysis() {
     summary: "",
     categories: [],
     designIssue: "",
+    designDiagnosis: "",
+    whyItMatters: "",
+    reviewCriteria: [],
     actionItems: [],
+    drawingTasks: [],
+    diagramTasks: [],
     nextCriticChecklist: [],
     presentationLines: [],
     portfolioNarrative: "",
@@ -180,61 +202,85 @@ function createProject(overrides = {}) {
 function sampleAnalysis() {
   return {
     summary:
-      "자기물류 처리 동선과 관람 동선을 분리하고, CO2 전환 시스템을 단면에서 작동 원리까지 보이도록 정리해야 한다.",
+      "폐기물 반입 동선, 관람 동선, CO₂ 순환 시스템의 경계를 평면과 단면에서 동시에 명확히 해야 한다.",
     categories: ["동선", "단면", "환경", "프로그램"],
     designIssue:
-      "산업 기능과 관람 기능의 경계가 불명확하고, 환경 시스템이 공간 경험으로 충분히 번역되지 않았다.",
+      "프로그램 간 동선 위계와 환경 제어 경계가 불명확해 산업 기능과 관람 경험이 같은 공간 논리 안에서 충돌할 수 있다.",
+    designDiagnosis:
+      "폐기물 처리, 관람 교육, CO₂ 순환 시스템이 모두 흥미로운 요소로 제시되어 있지만, 각 프로그램이 어디서 분리되고 어디서 시각적으로 연결되는지 도면에서 읽히지 않는다.",
+    whyItMatters:
+      "폐기물 처리 시설은 위생, 안전, 운영 동선이 설계 신뢰도를 좌우한다. 관람객이 처리 공정을 어디까지 볼 수 있는지, 음압 구역과 공개 구역의 경계가 어디인지가 불명확하면 환경 인프라를 전시/교육 프로그램으로 전환한다는 논리가 약해진다.",
+    reviewCriteria: [
+      "폐기물 차량, 운영자, 관람객 동선이 평면에서 서로 다른 선형과 출입 지점으로 구분되는가?",
+      "하역장, 열분해 모듈, CO₂ 전환 장치의 연결이 단면에서 공기 흐름과 함께 읽히는가?",
+      "관람자가 볼 수 있는 영역과 접근하면 안 되는 영역이 도면과 발표문에서 같은 기준으로 설명되는가?",
+    ],
     actionItems: [
       {
-        title: "자기물류 반입 동선과 관람 동선을 분리한 평면 대안 작성",
+        title: "폐기물 반입 동선과 관람객 동선을 분리한 평면 대안 작성",
         priority: "high",
         category: "동선",
         reason:
-          "서로 다른 사용자와 물류 흐름의 충돌을 줄이고 프로그램의 설득력을 높여야 한다.",
+          "위생·안전 흐름과 전시/교육 흐름이 같은 전면부에서 겹치면 프로그램의 위계가 흐려진다.",
         outputType: "평면도",
+        detail:
+          "차량 진입, 하역, 운영자 이동, 관람객 진입을 서로 다른 색과 선형으로 표시하고 교차 지점이 있다면 완충실이나 시각적 관람 구간으로 분리한다.",
       },
       {
-        title: "여과실, 이산화탄소 전환 모듈, 외부 공간의 연결을 단면 다이어그램으로 표현",
+        title: "하역장, 열분해 모듈, CO₂ 전환 장치를 관통하는 핵심 단면 작성",
         priority: "high",
         category: "단면",
         reason:
-          "기술 시스템이 건축 공간에서 어떻게 작동하는지 크리틱이 한눈에 이해해야 한다.",
+          "환경 시스템이 말로만 설명되면 건축 공간으로 구현된 장면이 약해진다.",
         outputType: "단면도 / 다이어그램",
+        detail:
+          "하역장 음압 구역의 시작과 끝, 열분해 모듈의 위치, CO₂ 흐름, 관람 가능한 경계선을 한 단면 안에 겹쳐 표시한다.",
       },
       {
-        title: "관람자가 시스템을 안전하게 관찰하는 발표 논리 정리",
+        title: "CO₂ 순환 시스템의 공개 범위 다이어그램 추가",
         priority: "normal",
-        category: "발표 논리",
+        category: "환경",
         reason:
-          "산업 시설과 교육 프로그램을 결합한 의도를 짧고 명확하게 말할 필요가 있다.",
-        outputType: "발표문",
+          "관람자가 처리 공정을 어디까지 이해하고 어디서 차단되는지 보여줘야 교육 프로그램의 설득력이 생긴다.",
+        outputType: "다이어그램 / 패널",
+        detail:
+          "폐기물, 열, CO₂, 관람 시선의 흐름을 분리된 레이어로 그리고, 실제 접근 가능한 동선과 시각적으로만 관찰하는 구역을 구분한다.",
       },
     ],
+    drawingTasks: [
+      "평면도에 차량, 운영자, 관람객 동선을 서로 다른 색과 범례로 표시한다.",
+      "핵심 단면에 하역장 음압 구역, 열분해 모듈, CO₂ 전환 장치, 관람 경계를 함께 표시한다.",
+    ],
+    diagramTasks: [
+      "폐기물 처리 흐름과 CO₂ 순환 흐름을 분리한 시스템 다이어그램을 만든다.",
+      "관람객이 볼 수 있는 공정과 차단되는 공정을 시선 다이어그램으로 표시한다.",
+    ],
     nextCriticChecklist: [
-      "분리된 물류 동선과 관람 동선이 표시된 평면",
-      "여과실과 전환 모듈을 통과하는 핵심 단면",
-      "CO2 전환 시스템의 공간 다이어그램",
+      "분리된 폐기물 반입 동선과 관람 동선이 표시된 평면",
+      "하역장과 열분해 모듈을 통과하는 핵심 단면",
+      "CO₂ 순환 시스템의 공간 다이어그램",
     ],
     presentationLines: [
-      "이 프로젝트는 자기물류 처리 과정을 숨기는 대신, 안전하게 관찰 가능한 환경 교육의 장으로 전환합니다.",
-      "평면에서는 동선 충돌을 줄이고, 단면에서는 환경 시스템의 작동 흐름을 드러내는 것이 핵심입니다.",
+      "이 프로젝트는 폐기물 처리 과정을 단순히 숨기는 것이 아니라, 안전하게 통제된 관람 경계를 통해 환경 인프라의 작동을 읽게 만드는 제안입니다.",
+      "평면에서는 위생·운영 동선과 관람 동선을 분리하고, 단면에서는 음압 구역과 CO₂ 순환 장치의 관계를 드러내는 것이 핵심입니다.",
     ],
     portfolioNarrative:
-      "초기 계획은 자기물류 처리와 관람 프로그램을 병치하는 데 머물렀지만, 크리틱 이후 물류 동선과 관람 동선을 분리하고 CO2 전환 시스템을 단면의 주된 서사로 드러내는 방향으로 발전했다.",
+      "초기 계획은 폐기물 처리와 관람 프로그램을 병치하는 데 머물렀지만, 크리틱 이후 위생·운영 동선과 관람 동선을 분리하고 CO₂ 순환 시스템을 단면의 주된 서사로 드러내는 방향으로 발전했다.",
     riskQuestions: [
-      "관람 동선이 산업 동선과 만나는 지점의 안전 기준은 무엇인가?",
-      "CO2 전환 시스템이 실제 공간에서 보이는 장면은 어디인가?",
+      "관람객은 폐기물 처리 공정을 어디까지 직접 볼 수 있는가?",
+      "음압 구역은 어디서 시작되고 어디서 끝나는가?",
+      "CO₂ 전환 시스템이 실제 공간에서 보이는 장면은 어디인가?",
     ],
   };
 }
 
 function createSampleState() {
   const project = createProject({
-    title: "시흥 IC 모듈형 자기물류 처리 시설",
-    topic: "자기물류 처리와 CO2 전환 시스템을 결합한 임시 인프라",
+    title: "시흥 IC 순환 자원 관람 인프라",
+    topic: "폐기물 처리와 CO₂ 순환 시스템을 결합한 공개형 환경 인프라",
     site: "시흥 IC 인근 산업·교통 인프라 경계부",
     concept:
-      "자기물류 처리, CO2 전환, 관람 교육 동선을 분리하면서도 단면적으로 연결하는 공개형 인프라",
+      "폐기물 반입, 열분해, CO₂ 순환, 관람 교육 동선을 분리하면서도 단면적으로 읽히게 만드는 공개형 인프라",
     stage: "졸업설계 중간 크리틱 준비",
     deadline: today(),
     notes:
@@ -248,9 +294,9 @@ function createSampleState() {
       date: today(),
       source: "교수",
       rawText:
-        "자기물류 반입 동선과 관람 동선이 너무 가까워 보인다. CO2 전환 시스템이 말로만 있고 공간적으로 어떻게 드러나는지 약하다. 여과실과 이산화탄소 전환 모듈의 연결 관계를 단면에서 더 명확히 보여줘야 한다.",
+        "폐기물 반입 동선과 관람 동선이 너무 가까워 보인다. CO₂ 순환 시스템은 흥미롭지만, 공간적으로 어떻게 드러나는지 약하다. 하역장과 열분해 모듈의 연결 관계를 단면에서 더 명확히 보여줘야 한다.",
       importance: "high",
-      keywords: ["동선", "CO2", "단면", "이산화탄소"],
+      keywords: ["동선", "CO₂", "단면", "이산화탄소"],
       analysis,
       createdAt: nowIso(),
     },
@@ -311,7 +357,7 @@ function normalizeFeedback(feedback) {
     importance: ["high", "normal", "low"].includes(feedback.importance)
       ? feedback.importance
       : "normal",
-    keywords: toStringArray(feedback.keywords),
+    keywords: normalizeTags(feedback.keywords),
     analysis: feedback.analysis ? normalizeAnalysis(feedback.analysis) : null,
     createdAt: stringOr(feedback.createdAt, nowIso()),
   };
@@ -325,6 +371,7 @@ function normalizeTask(task) {
     category: stringOr(task.category, "기타"),
     reason: stringOr(task.reason, ""),
     outputType: stringOr(task.outputType, ""),
+    detail: stringOr(task.detail, ""),
     status: TASK_STATUSES.includes(task.status) ? task.status : "todo",
     sourceFeedbackId: stringOr(task.sourceFeedbackId, ""),
     createdAt: stringOr(task.createdAt, nowIso()),
@@ -333,14 +380,29 @@ function normalizeTask(task) {
 
 function normalizeAnalysis(analysis) {
   const safe = analysis || {};
+  const designDiagnosis = stringOr(safe.designDiagnosis, safe.designIssue || "");
+  const reviewCriteria = toStringArray(safe.reviewCriteria);
+  const drawingTasks = toStringArray(safe.drawingTasks);
+  const diagramTasks = toStringArray(safe.diagramTasks);
+  const nextCriticChecklist = uniqueStrings([
+    ...reviewCriteria,
+    ...toStringArray(safe.nextCriticChecklist),
+    ...drawingTasks,
+    ...diagramTasks,
+  ]).slice(0, 10);
   return {
     summary: stringOr(safe.summary, ""),
     categories: normalizeCategories(safe.categories),
-    designIssue: stringOr(safe.designIssue, ""),
+    designIssue: stringOr(safe.designIssue, designDiagnosis),
+    designDiagnosis,
+    whyItMatters: stringOr(safe.whyItMatters, ""),
+    reviewCriteria,
     actionItems: Array.isArray(safe.actionItems)
       ? safe.actionItems.map((item) => normalizeActionItem(item, safe.categories?.[0]))
       : [],
-    nextCriticChecklist: toStringArray(safe.nextCriticChecklist),
+    drawingTasks,
+    diagramTasks,
+    nextCriticChecklist,
     presentationLines: toStringArray(safe.presentationLines),
     portfolioNarrative: stringOr(safe.portfolioNarrative, ""),
     riskQuestions: toStringArray(safe.riskQuestions),
@@ -348,12 +410,14 @@ function normalizeAnalysis(analysis) {
 }
 
 function normalizeActionItem(item, fallbackCategory = "기타") {
+  const category = mapLooseCategory(item?.category || fallbackCategory);
   return {
     title: stringOr(item?.title, "작업 제목 없음"),
     priority: ["high", "normal", "low"].includes(item?.priority) ? item.priority : "normal",
-    category: stringOr(item?.category, fallbackCategory || "기타"),
+    category: CATEGORIES.includes(category) ? category : "기타",
     reason: stringOr(item?.reason, ""),
     outputType: stringOr(item?.outputType, ""),
+    detail: stringOr(item?.detail, ""),
   };
 }
 
@@ -380,17 +444,48 @@ function normalizePortfolioDraft(draft) {
 }
 
 function normalizeCategories(value) {
-  const categories = toStringArray(value);
+  const categories = normalizeTags(value).map(mapLooseCategory);
   if (categories.length === 0) return [];
-  return categories.map((category) => {
-    const exact = CATEGORIES.find((candidate) => candidate === category);
-    return exact || category;
-  });
+  const normalized = uniqueStrings(
+    categories.map((category) => (CATEGORIES.includes(category) ? category : "기타")),
+  );
+  const withoutFallback = normalized.filter((category) => category !== "기타");
+  return (withoutFallback.length > 0 ? withoutFallback : normalized).slice(0, 5);
 }
 
 function toStringArray(value) {
+  if (typeof value === "string") {
+    return value
+      .split(/[,，、\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function normalizeTags(value) {
+  return uniqueStrings(toStringArray(value).map(normalizeTag).filter(Boolean));
+}
+
+function normalizeTag(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const compact = text.replace(/\s+/g, "").toLowerCase();
+  if (["co2", "co₂", "이산화탄소", "탄소"].includes(compact)) return "CO₂";
+  return text.replace(/\s+/g, " ");
+}
+
+function mapLooseCategory(value) {
+  const tag = normalizeTag(value);
+  if (CATEGORIES.includes(tag)) return tag;
+  const compact = tag.replace(/\s+/g, "").toLowerCase();
+  if (["co2", "co₂", "이산화탄소", "탄소", "환기", "에너지"].includes(compact)) return "환경";
+  if (/패널|표현|다이어그램|diagram/.test(compact)) return "표현 / 패널";
+  if (/발표|논리|서사/.test(compact)) return "발표 논리";
+  if (/이동|접근|흐름|반입|관람/.test(compact)) return "동선";
+  if (/볼륨|형태/.test(compact)) return "매스";
+  return tag;
 }
 
 function stringOr(value, fallback) {
@@ -422,13 +517,15 @@ function selectedFeedback(project = getActiveProject()) {
 }
 
 function createTask(item, sourceFeedbackId, fallbackCategory = "기타") {
+  const category = mapLooseCategory(item.category || fallbackCategory);
   return {
     id: uid("task"),
     title: stringOr(item.title, "작업 제목 없음"),
     priority: ["high", "normal", "low"].includes(item.priority) ? item.priority : "normal",
-    category: stringOr(item.category, fallbackCategory),
+    category: CATEGORIES.includes(category) ? category : fallbackCategory,
     reason: stringOr(item.reason, ""),
     outputType: stringOr(item.outputType, ""),
+    detail: stringOr(item.detail, ""),
     status: "todo",
     sourceFeedbackId,
     createdAt: nowIso(),
@@ -436,25 +533,95 @@ function createTask(item, sourceFeedbackId, fallbackCategory = "기타") {
 }
 
 async function createAiClient() {
+  updateAiDiagnostics({
+    configFileStatus: "checking",
+    firebaseSdkStatus: "pending",
+    aiLogicSdkStatus: "pending",
+    lastErrorCode: "-",
+    lastErrorSummary: "Firebase 설정 파일을 확인하는 중입니다.",
+  });
   try {
-    const configModule = await import(CONFIG_URL);
-    const firebaseConfig = configModule.firebaseConfig;
-    if (!isUsableFirebaseConfig(firebaseConfig)) {
-      return {
-        available: false,
-        message: "Firebase 설정이 비어 있어 Mock 모드로 실행합니다. 샘플 분석 결과가 생성됩니다.",
-      };
+    const configModule = await withTimeout(import(CONFIG_URL), 5000, "Firebase 설정 파일 로드");
+    const firebaseConfig = configModule.firebaseConfig || configModule.default;
+    const configCheck = inspectFirebaseConfig(firebaseConfig);
+    updateAiDiagnostics({
+      configFileStatus: configCheck.valid ? "found" : "invalid",
+      apiKeyPresent: configCheck.apiKeyPresent,
+      apiKeyMasked: configCheck.apiKeyMasked,
+      projectId: configCheck.projectId,
+      authDomain: configCheck.authDomain,
+      appIdPresent: configCheck.appIdPresent,
+      firebaseSdkStatus: configCheck.valid ? "checking" : "skipped",
+      aiLogicSdkStatus: configCheck.valid ? "pending" : "skipped",
+      lastErrorCode: configCheck.valid ? "-" : "CONFIG_INVALID",
+      lastErrorSummary: configCheck.valid
+        ? "Firebase config 파일을 감지했습니다. SDK를 불러오는 중입니다."
+        : configCheck.reason,
+    });
+    if (!configCheck.valid) {
+      return unavailableAiClient(
+        "CONFIG_INVALID",
+        `${configCheck.reason} Firebase Console의 Project settings > Your apps에서 web config를 다시 복사해 src/firebaseConfig.js를 교체하세요.`,
+      );
     }
 
-    const [{ initializeApp }, aiModule] = await Promise.all([
-      import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`),
-      import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-ai.js`),
-    ]);
+    let appModule;
+    try {
+      appModule = await withTimeout(
+        import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`),
+        AI_INIT_TIMEOUT_MS,
+        "Firebase App SDK 로드",
+      );
+      updateAiDiagnostics({
+        firebaseSdkStatus: "loaded",
+        aiLogicSdkStatus: "checking",
+        lastErrorSummary: "Firebase App SDK를 불러왔습니다. AI Logic SDK를 확인하는 중입니다.",
+      });
+    } catch (error) {
+      const details = classifyAiError(error);
+      updateAiDiagnostics({
+        firebaseSdkStatus: "failed",
+        aiLogicSdkStatus: "skipped",
+        lastErrorCode: details.code,
+        lastErrorSummary: details.summary,
+      });
+      return unavailableAiClient(details.code, `Firebase App SDK 로드 실패: ${details.summary}`);
+    }
+
+    let aiModule;
+    try {
+      aiModule = await withTimeout(
+        import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-ai.js`),
+        AI_INIT_TIMEOUT_MS,
+        "Firebase AI Logic Web SDK 로드",
+      );
+      updateAiDiagnostics({
+        aiLogicSdkStatus: "loaded",
+        lastErrorSummary: "Firebase AI Logic SDK를 불러왔습니다. Gemini 모델을 준비하는 중입니다.",
+      });
+    } catch (error) {
+      const details = classifyAiError(error);
+      updateAiDiagnostics({
+        aiLogicSdkStatus: "failed",
+        lastErrorCode: details.code,
+        lastErrorSummary: details.summary,
+      });
+      return unavailableAiClient(details.code, `Firebase AI Logic SDK 로드 실패: ${details.summary}`);
+    }
+
+    const { initializeApp } = appModule;
     const { getAI, getGenerativeModel, GoogleAIBackend } = aiModule;
+    if (typeof getAI !== "function" || typeof getGenerativeModel !== "function") {
+      throw new Error("Firebase AI Logic Web SDK exports were not found.");
+    }
     const app = initializeApp(firebaseConfig);
     const backend = GoogleAIBackend ? new GoogleAIBackend() : undefined;
     const ai = backend ? getAI(app, { backend }) : getAI(app);
     const model = getGenerativeModel(ai, { model: MODEL_NAME });
+    updateAiDiagnostics({
+      lastErrorCode: "-",
+      lastErrorSummary: `Firebase AI Logic 연결 준비 완료: ${MODEL_NAME}`,
+    });
     return {
       available: true,
       model,
@@ -462,25 +629,92 @@ async function createAiClient() {
     };
   } catch (error) {
     console.info("Firebase AI Logic is unavailable. Falling back to mock mode.", error);
-    return {
-      available: false,
-      message: "Firebase 설정 파일이 없거나 SDK를 불러오지 못해 Mock 모드로 실행합니다. 샘플 분석 결과가 생성됩니다.",
-    };
+    const details = classifyAiError(error);
+    const diagnosticPatch = {};
+    if (details.code === "CONFIG_FILE_LOAD_FAILED") {
+      diagnosticPatch.configFileStatus = "missing";
+      diagnosticPatch.firebaseSdkStatus = "skipped";
+      diagnosticPatch.aiLogicSdkStatus = "skipped";
+    } else {
+      if (aiDiagnostics.firebaseSdkStatus === "checking") diagnosticPatch.firebaseSdkStatus = "failed";
+      if (aiDiagnostics.aiLogicSdkStatus === "checking") diagnosticPatch.aiLogicSdkStatus = "failed";
+    }
+    updateAiDiagnostics(diagnosticPatch);
+    return unavailableAiClient(
+      details.code,
+      `Firebase AI Logic 초기화 실패: ${details.summary} Mock 모드로 실행합니다.`,
+    );
   }
 }
 
 function isUsableFirebaseConfig(config) {
-  if (!config || typeof config !== "object") return false;
+  return inspectFirebaseConfig(config).valid;
+}
+
+function inspectFirebaseConfig(config) {
+  const result = {
+    valid: false,
+    apiKeyPresent: false,
+    apiKeyMasked: "-",
+    projectId: "-",
+    authDomain: "-",
+    appIdPresent: false,
+    reason: "src/firebaseConfig.js에서 firebaseConfig 객체를 찾지 못했습니다.",
+  };
+  if (!config || typeof config !== "object") return result;
+
+  const values = {
+    apiKey: String(config.apiKey || "").trim(),
+    authDomain: String(config.authDomain || "").trim(),
+    projectId: String(config.projectId || "").trim(),
+    appId: String(config.appId || "").trim(),
+  };
+  result.apiKeyPresent = Boolean(values.apiKey);
+  result.apiKeyMasked = values.apiKey ? maskApiKey(values.apiKey) : "-";
+  result.projectId = values.projectId || "-";
+  result.authDomain = values.authDomain || "-";
+  result.appIdPresent = Boolean(values.appId);
+
   const required = ["apiKey", "authDomain", "projectId", "appId"];
-  return required.every((key) => {
-    const value = String(config[key] || "");
-    return value && !value.includes("YOUR_");
+  const missing = required.filter((key) => !values[key]);
+  const placeholders = required.filter((key) => /YOUR_|PASTE_|REPLACE_|<|>/.test(values[key]));
+  if (missing.length > 0) {
+    result.reason = `Firebase config 필수값 누락: ${missing.join(", ")}.`;
+    return result;
+  }
+  if (placeholders.length > 0) {
+    result.reason = `Firebase config에 예시값이 남아 있습니다: ${placeholders.join(", ")}.`;
+    return result;
+  }
+
+  result.valid = true;
+  result.reason = "Firebase config 필수값을 확인했습니다.";
+  return result;
+}
+
+function maskApiKey(apiKey) {
+  const value = String(apiKey || "").trim();
+  if (!value) return "-";
+  if (value.length <= 12) return `${value.slice(0, 3)}...`;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function unavailableAiClient(code, message) {
+  updateAiDiagnostics({
+    lastErrorCode: code,
+    lastErrorSummary: message,
   });
+  return {
+    available: false,
+    code,
+    message,
+  };
 }
 
 function renderAll() {
   ensureSelection();
   renderAiMode();
+  renderAiDiagnostics();
   renderProjectList();
   renderProjectForm();
   renderFeedbackTimeline();
@@ -497,9 +731,88 @@ function renderAiMode() {
     els.aiModePill.className = "status-pill";
     return;
   }
-  els.aiModePill.textContent = aiClient.available ? "Gemini 연결 가능" : "Mock 모드 · Firebase 미연결";
+  if (lastAiFallbackReason) {
+    els.aiModePill.textContent = aiClient.available
+      ? "Gemini 재시도 가능 · 최근 Mock 대체"
+      : "Mock 모드 · 설정/SDK 확인 필요";
+    els.aiModePill.className = "status-pill warn";
+    els.aiModePill.title = lastAiFallbackReason;
+    return;
+  }
+  els.aiModePill.textContent = aiClient.available ? "Gemini 연결 가능" : aiUnavailableLabel(aiClient.message);
   els.aiModePill.className = `status-pill ${aiClient.available ? "ok" : "warn"}`;
   els.aiModePill.title = aiClient.message;
+}
+
+function aiUnavailableLabel(message) {
+  if (/설정값|예시값/.test(message)) return "Mock 모드 · 설정값 확인 필요";
+  if (/초기화 실패|SDK|네트워크|설정 파일/.test(message)) return "Mock 모드 · 설정/SDK 확인 필요";
+  return "Mock 모드 · Firebase 미연결";
+}
+
+function updateAiDiagnostics(patch) {
+  Object.assign(aiDiagnostics, patch);
+  renderAiDiagnostics();
+}
+
+function renderAiDiagnostics() {
+  if (!els.aiDiagnosticPanel) return;
+  const modeLabel = aiClient?.available
+    ? "Gemini 연결 준비됨"
+    : aiClient
+      ? "Mock fallback"
+      : "확인 중";
+  const rows = [
+    ["config 파일", statusText(aiDiagnostics.configFileStatus)],
+    [
+      "apiKey",
+      aiDiagnostics.apiKeyPresent ? `있음 (${aiDiagnostics.apiKeyMasked})` : "없음",
+    ],
+    ["projectId", aiDiagnostics.projectId || "-"],
+    ["authDomain", aiDiagnostics.authDomain || "-"],
+    ["appId", aiDiagnostics.appIdPresent ? "있음" : "없음"],
+    ["Firebase SDK", statusText(aiDiagnostics.firebaseSdkStatus)],
+    ["AI Logic SDK", statusText(aiDiagnostics.aiLogicSdkStatus)],
+    ["Gemini 모델", aiDiagnostics.modelName],
+    ["마지막 오류 코드", aiDiagnostics.lastErrorCode || "-"],
+    ["마지막 오류 요약", aiDiagnostics.lastErrorSummary || "-"],
+  ];
+  els.aiDiagnosticPanel.innerHTML = `
+    <div class="diagnostic-head">
+      <strong>Firebase 연결 진단</strong>
+      <span class="status-pill ${aiClient?.available ? "ok" : "warn"}">${escapeHtml(modeLabel)}</span>
+    </div>
+    <dl>
+      ${rows
+        .map(
+          ([label, value]) => `
+            <div>
+              <dt>${escapeHtml(label)}</dt>
+              <dd>${escapeHtml(value)}</dd>
+            </div>
+          `,
+        )
+        .join("")}
+    </dl>
+    <p class="diagnostic-help">
+      API 키가 유효하지 않다면 Firebase Console의 Project settings &gt; Your apps에서 현재 웹앱 config를 다시 복사하고,
+      AI Logic의 Gemini Developer API provider 설정을 확인하세요.
+    </p>
+  `;
+}
+
+function statusText(status) {
+  const labels = {
+    checking: "확인 중",
+    found: "감지됨",
+    invalid: "설정 오류",
+    missing: "없음 / 로드 실패",
+    pending: "대기",
+    skipped: "건너뜀",
+    loaded: "로드됨",
+    failed: "로드 실패",
+  };
+  return labels[status] || status || "-";
 }
 
 function renderProjectList() {
@@ -580,7 +893,7 @@ function renderFeedbackTimeline() {
     .map((feedback) => {
       const summary = feedback.analysis?.summary || "아직 분석되지 않은 피드백입니다. 재분석을 실행하세요.";
       const rawPreview = truncate(feedback.rawText, 150);
-      const tags = [...feedback.keywords, ...(feedback.analysis?.categories || [])]
+      const tags = displayTags(feedback.keywords, feedback.analysis?.categories)
         .slice(0, 8)
         .map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`)
         .join("");
@@ -622,7 +935,7 @@ function renderAnalysisCard() {
       <span class="source">${escapeHtml(feedback.source)}</span>
       <span class="importance ${escapeAttr(feedback.importance)}">${escapeHtml(PRIORITY_LABELS[feedback.importance] || "보통")}</span>
     </div>
-    ${renderTags(feedback.keywords)}
+    ${renderTags(displayTags(feedback.keywords, feedback.analysis?.categories))}
     <h4>피드백 원문</h4>
     <p class="feedback-raw">${escapeHtml(feedback.rawText || "원문 없음")}</p>
   `;
@@ -642,32 +955,48 @@ function renderAnalysisCard() {
   }
 
   const analysis = feedback.analysis;
+  const diagnosis = analysis.designDiagnosis || analysis.designIssue;
   els.analysisCard.className = "analysis-card";
   els.analysisCard.innerHTML = `
     <div class="analysis-toolbar">
       <button data-analysis-action="reanalyze" type="button">재분석</button>
       <button class="danger" data-analysis-action="delete-feedback" type="button">피드백 삭제</button>
     </div>
-    <h3>${escapeHtml(analysis.summary || "분석 요약 없음")}</h3>
+    <div class="analysis-section compact">
+      <h4>핵심 요약</h4>
+      <p>${escapeHtml(analysis.summary || "분석 요약 없음")}</p>
+    </div>
     ${feedbackMeta}
-    ${renderTags(analysis.categories)}
-    <h4>설계 이슈</h4>
-    <p>${escapeHtml(analysis.designIssue || "설계 이슈가 아직 정리되지 않았습니다.")}</p>
-    <h4>작업 제안</h4>
-    ${renderList(
-      analysis.actionItems.map(
-        (item) =>
-          `${item.title} · ${PRIORITY_LABELS[item.priority] || "보통"} · ${item.outputType || "산출물 미정"}`,
-      ),
-    )}
-    <h4>다음 크리틱 체크리스트</h4>
-    ${renderList(analysis.nextCriticChecklist)}
+    <div class="analysis-grid">
+      <section class="analysis-section">
+        <h4>설계 진단</h4>
+        <p>${escapeHtml(diagnosis || "설계 진단이 아직 정리되지 않았습니다.")}</p>
+      </section>
+      <section class="analysis-section">
+        <h4>왜 중요한가</h4>
+        <p>${escapeHtml(analysis.whyItMatters || "설계 완성도, 안전성, 경험, 발표 논리에 미치는 영향은 추가 검토가 필요합니다.")}</p>
+      </section>
+    </div>
+    <h4>검토 기준</h4>
+    ${renderList(analysis.reviewCriteria.length ? analysis.reviewCriteria : analysis.nextCriticChecklist)}
+    <h4>다음 작업</h4>
+    ${renderActionItems(analysis.actionItems)}
+    <div class="analysis-grid">
+      <section class="analysis-section">
+        <h4>도면 작업</h4>
+        ${renderList(analysis.drawingTasks)}
+      </section>
+      <section class="analysis-section">
+        <h4>다이어그램 작업</h4>
+        ${renderList(analysis.diagramTasks)}
+      </section>
+    </div>
     <h4>발표 문장</h4>
     ${renderList(analysis.presentationLines)}
+    <h4>예상 질문</h4>
+    ${renderList(analysis.riskQuestions)}
     <h4>포트폴리오 서사</h4>
     <p>${escapeHtml(analysis.portfolioNarrative || "누적 피드백이 쌓이면 서사가 더 구체화됩니다.")}</p>
-    <h4>리스크 질문</h4>
-    ${renderList(analysis.riskQuestions)}
   `;
 }
 
@@ -701,6 +1030,7 @@ function renderTaskList() {
             ${task.outputType ? `<span class="tag">${escapeHtml(task.outputType)}</span>` : ""}
           </div>
           ${task.reason ? `<p>${escapeHtml(task.reason)}</p>` : ""}
+          ${task.detail ? `<p class="task-detail">${escapeHtml(task.detail)}</p>` : ""}
         </article>
       `,
     )
@@ -774,9 +1104,38 @@ function renderInputLength() {
 }
 
 function renderTags(tags) {
-  const safeTags = toStringArray(tags);
+  const safeTags = normalizeTags(tags);
   if (safeTags.length === 0) return "";
   return `<div class="tags">${safeTags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>`;
+}
+
+function displayTags(keywords = [], categories = []) {
+  return uniqueStrings([...normalizeCategories(categories), ...normalizeTags(keywords)]).filter(Boolean);
+}
+
+function renderActionItems(items) {
+  const values = Array.isArray(items) ? items : [];
+  if (values.length === 0) return `<p class="muted">아직 생성된 작업이 없습니다.</p>`;
+  return `
+    <div class="analysis-actions">
+      ${values
+        .map(
+          (item) => `
+            <article class="analysis-action">
+              <div class="tags">
+                <span class="tag priority-${escapeAttr(item.priority)}">${escapeHtml(PRIORITY_LABELS[item.priority] || "보통")}</span>
+                ${item.outputType ? `<span class="tag">${escapeHtml(item.outputType)}</span>` : ""}
+                ${item.category ? `<span class="tag">${escapeHtml(item.category)}</span>` : ""}
+              </div>
+              <strong>${escapeHtml(item.title)}</strong>
+              ${item.reason ? `<p>${escapeHtml(item.reason)}</p>` : ""}
+              ${item.detail ? `<p class="task-detail">${escapeHtml(item.detail)}</p>` : ""}
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function renderList(items, tagName = "ul") {
@@ -916,8 +1275,9 @@ async function runAnalysisForFeedback(project, feedback) {
   setBusy(true);
   try {
     const analysis = await analyzeFeedback(project, feedback);
+    const fallbackReason = lastAiFallbackReason;
     feedback.analysis = analysis;
-    feedback.keywords = uniqueStrings([...feedback.keywords, ...analysis.categories]);
+    feedback.keywords = normalizeTags([...feedback.keywords, ...analysis.categories]);
     project.tasks = project.tasks.filter((task) => task.sourceFeedbackId !== feedback.id);
     project.tasks.unshift(
       ...analysis.actionItems.map((item) =>
@@ -930,7 +1290,11 @@ async function runAnalysisForFeedback(project, feedback) {
     saveState();
     outputView = "critic";
     renderAll();
-    showToast("피드백 분석과 작업 카드 생성을 완료했습니다.");
+    showToast(
+      fallbackReason
+        ? aiFallbackToast("Gemini 분석", "Mock 분석으로 작업 카드를 생성했습니다.")
+        : "피드백 분석과 작업 카드 생성을 완료했습니다.",
+    );
   } finally {
     setBusy(false);
   }
@@ -995,10 +1359,12 @@ async function handleCriticPrep() {
   setBusy(true);
   try {
     let plan;
+    let fallbackReason = "";
     try {
       plan = await requestJsonFromModel(buildCriticPlanPrompt(project), normalizeCriticPlan);
     } catch (error) {
       console.info("Critic prep AI generation failed. Using fallback.", error);
+      fallbackReason = recordAiFallback("다음 크리틱 생성 실패", error);
       plan = fallbackCriticPlan(project);
     }
     project.criticPlan = plan;
@@ -1006,7 +1372,11 @@ async function handleCriticPrep() {
     outputView = "critic";
     saveState();
     renderAll();
-    showToast("다음 크리틱 준비 패널을 생성했습니다.");
+    showToast(
+      fallbackReason
+        ? aiFallbackToast("다음 크리틱 생성", "Mock 준비안으로 대체했습니다.")
+        : "다음 크리틱 준비 패널을 생성했습니다.",
+    );
   } finally {
     setBusy(false);
   }
@@ -1022,10 +1392,12 @@ async function handlePortfolioDraft() {
   setBusy(true);
   try {
     let draft;
+    let fallbackReason = "";
     try {
       draft = await requestJsonFromModel(buildPortfolioPrompt(project), normalizePortfolioDraft);
     } catch (error) {
       console.info("Portfolio AI generation failed. Using fallback.", error);
+      fallbackReason = recordAiFallback("포트폴리오 서사 생성 실패", error);
       draft = fallbackPortfolioDraft(project);
     }
     project.portfolioDraft = draft;
@@ -1033,7 +1405,11 @@ async function handlePortfolioDraft() {
     outputView = "portfolio";
     saveState();
     renderAll();
-    showToast("포트폴리오 서사 초안을 생성했습니다.");
+    showToast(
+      fallbackReason
+        ? aiFallbackToast("포트폴리오 서사 생성", "Mock 서사로 대체했습니다.")
+        : "포트폴리오 서사 초안을 생성했습니다.",
+    );
   } finally {
     setBusy(false);
   }
@@ -1044,11 +1420,7 @@ async function analyzeFeedback(project, feedback) {
     return await requestJsonFromModel(buildAnalysisPrompt(project, feedback), normalizeAnalysis);
   } catch (error) {
     console.info("Feedback analysis AI generation failed. Using fallback.", error);
-    if (aiClient && !aiClient.available) {
-      showToast("Firebase 설정이 없어 Mock 분석 결과로 대체합니다.");
-    } else {
-      showToast("Gemini 호출에 실패해 Mock 분석 결과로 대체합니다.");
-    }
+    recordAiFallback(aiClient && !aiClient.available ? "Firebase 연결 준비 실패" : "Gemini 분석 실패", error);
     return fallbackAnalysis(project, feedback);
   }
 }
@@ -1058,10 +1430,118 @@ async function requestJsonFromModel(prompt, normalizer) {
   if (!client.available) {
     throw new Error(client.message);
   }
-  const result = await client.model.generateContent(prompt);
+  const result = await withTimeout(
+    client.model.generateContent(prompt),
+    AI_GENERATE_TIMEOUT_MS,
+    "Gemini generateContent",
+  );
   const text = await extractResponseText(result);
   const parsed = parseJsonFromText(text);
+  lastAiFallbackReason = "";
+  updateAiDiagnostics({
+    lastErrorCode: "-",
+    lastErrorSummary: "최근 Gemini 호출이 성공했습니다.",
+  });
+  renderAiMode();
   return normalizer(parsed);
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer = 0;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => {
+      reject(new Error(`${label} 시간이 초과되었습니다.`));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
+
+function recordAiFallback(context, error) {
+  const details = classifyAiError(error);
+  const reason = `${context}: ${details.summary}`;
+  lastAiFallbackReason = reason;
+  updateAiDiagnostics({
+    lastErrorCode: details.code,
+    lastErrorSummary: reason,
+  });
+  console.info("AI fallback diagnostics", {
+    context,
+    code: details.code,
+    summary: details.summary,
+  });
+  renderAiMode();
+  return reason;
+}
+
+function aiFallbackToast(actionLabel, fallbackLabel) {
+  const code = aiDiagnostics.lastErrorCode && aiDiagnostics.lastErrorCode !== "-"
+    ? ` (${aiDiagnostics.lastErrorCode})`
+    : "";
+  return `${actionLabel} 실패${code}. Firebase 연결 진단을 확인하세요. ${fallbackLabel}`;
+}
+
+function describeAiError(error) {
+  return classifyAiError(error).summary;
+}
+
+function classifyAiError(error) {
+  const raw = String(error?.message || error?.code || error || "알 수 없는 오류");
+  const message = sanitizeAiError(raw);
+  if (/firebaseConfig\.js|Firebase 설정 파일 로드/i.test(message)) {
+    return {
+      code: "CONFIG_FILE_LOAD_FAILED",
+      summary: "src/firebaseConfig.js를 불러오지 못했습니다. 파일 경로와 로컬 서버 응답을 확인하세요.",
+    };
+  }
+  if (/Failed to fetch dynamically imported module|Importing a module script failed|firebase-(app|ai)\.js|Firebase App SDK|Firebase AI Logic Web SDK/i.test(message)) {
+    return {
+      code: "SDK_IMPORT_FAILED",
+      summary: "Firebase Web SDK를 불러오지 못했습니다. 네트워크, 브라우저 차단, 또는 CDN 접근 상태를 확인하세요.",
+    };
+  }
+  if (/시간이 초과|timed out|timeout/i.test(message)) {
+    return {
+      code: "AI_TIMEOUT",
+      summary: "Firebase AI Logic 응답 시간이 초과되었습니다. 네트워크 또는 API 설정을 확인하세요.",
+    };
+  }
+  if (/JSON object not found|Unexpected token|JSON/i.test(message)) {
+    return {
+      code: "RESPONSE_FORMAT_INVALID",
+      summary: "Gemini 응답이 요청한 JSON 형식이 아니었습니다.",
+    };
+  }
+  if (/API key not valid|invalid api key|auth\/invalid-api-key/i.test(message)) {
+    return {
+      code: "API_KEY_INVALID",
+      summary:
+        "Firebase config의 apiKey가 현재 Firebase 웹앱과 맞지 않거나, Firebase AI Logic / Gemini Developer API 설정이 완료되지 않았을 수 있습니다. Firebase Console의 Project settings > Your apps에서 web config를 다시 복사해 src/firebaseConfig.js를 교체하세요.",
+    };
+  }
+  if (/permission|403|PERMISSION_DENIED|not authorized/i.test(message)) {
+    return {
+      code: "PERMISSION_DENIED",
+      summary:
+        "Firebase AI Logic 또는 Gemini API 권한이 허용되지 않았습니다. AI Logic provider 설정과 Google Cloud API 키 제한을 확인하세요.",
+    };
+  }
+  if (/quota|429|RESOURCE_EXHAUSTED|rate limit/i.test(message)) {
+    return {
+      code: "QUOTA_EXHAUSTED",
+      summary: "Gemini API 할당량 또는 속도 제한에 도달했습니다.",
+    };
+  }
+  return {
+    code: String(error?.code || "AI_ERROR").replace(/[^A-Z0-9_/-]/gi, "_").slice(0, 60),
+    summary: truncate(message, 220),
+  };
+}
+
+function sanitizeAiError(message) {
+  return String(message || "")
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "AIza...")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function extractResponseText(result) {
@@ -1092,33 +1572,73 @@ function parseJsonFromText(text) {
 
 function buildAnalysisPrompt(project, feedback) {
   return `
-너는 한국어에 최적화된 건축 설계 스튜디오 크리틱 정리 AI다.
-피드백을 단순 요약하지 말고 설계자가 바로 실행할 수 있는 작업 리스트, 발표 문장, 다음 크리틱 체크리스트로 변환한다.
-사용자가 말하지 않은 사실은 단정하지 말고 "확인이 필요함"으로 표현한다.
+너는 건축학과 설계 스튜디오의 크리틱 피드백을 분석하는 설계 튜터다.
+사용자의 피드백을 단순 요약하지 말고, 설계상 문제가 무엇인지 진단하고, 왜 중요한지 설명하며,
+다음 크리틱 전까지 수행해야 할 도면·다이어그램·발표 작업으로 변환한다.
+
+분석 원칙:
+1. 피드백 원문을 그대로 반복하지 마라.
+2. "무엇이 문제인지"보다 "왜 설계상 문제가 되는지"를 설명해라.
+3. 추상적인 조언보다 실제 산출물 단위의 작업을 제안해라.
+4. 건축 학생이 다음 크리틱 전까지 해야 할 일로 바꿔라.
+5. 평면, 단면, 다이어그램, 매스, 패널, 발표문 중 어떤 산출물이 필요한지 명확히 말해라.
+6. 불확실한 내용은 단정하지 말고 "검토 필요"라고 표시해라.
+7. 결과는 반드시 JSON 객체만 반환해라.
+
+나쁜 예:
+- "동선 분리가 필요합니다."
+- "매스 디자인 검토가 필요합니다."
+- "공간적 구현이 필요합니다."
+
+좋은 예:
+"폐기물 반입 동선과 관람객 동선이 같은 전면부에서 겹치면, 위생·안전 프로그램과 전시/교육 프로그램의 위계가 흐려진다.
+다음 크리틱 전에는 평면에서 차량, 운영자, 관람객 동선을 서로 다른 선형으로 분리하고,
+단면에서는 하역장 음압 구역과 관람 가능 구역의 경계를 명확히 표시해야 한다."
+
+사용자가 말하지 않은 사실은 단정하지 말고 "검토 필요"라고 표현한다.
 반드시 JSON 객체만 반환한다.
 
 분류 카테고리:
 ${CATEGORIES.join(", ")}
+카테고리는 위 목록 중에서만 선택한다. CO2, co2, 이산화탄소는 태그에서는 CO₂로 정규화하고, 카테고리로는 환경을 사용한다.
 
 JSON 스키마:
 {
-  "summary": "핵심 피드백 한두 문장 요약",
-  "categories": ["카테고리"],
-  "designIssue": "설계 문제가 무엇인지 설명",
+  "summary": "피드백의 핵심을 한 문장으로 압축",
+  "categories": ["동선", "단면", "환경"],
+  "designIssue": "designDiagnosis와 같은 내용. 기존 호환용 필드",
+  "designDiagnosis": "이 피드백이 가리키는 설계상 핵심 문제",
+  "whyItMatters": "이 문제가 설계 완성도, 안전성, 경험, 발표 논리에 왜 중요한지",
+  "reviewCriteria": [
+    "다음 검토 때 확인해야 할 기준"
+  ],
   "actionItems": [
     {
-      "title": "해야 할 작업",
+      "title": "구체적인 작업 제목",
       "priority": "high | normal | low",
       "category": "관련 카테고리",
-      "reason": "왜 해야 하는지",
-      "outputType": "평면도 / 단면도 / 다이어그램 / 발표문 / 패널"
+      "reason": "이 작업이 필요한 이유",
+      "outputType": "평면도 / 단면도 / 다이어그램 / 발표문 / 패널 / 매스 검토",
+      "detail": "실제로 어떻게 수정하거나 표현해야 하는지"
     }
+  ],
+  "drawingTasks": [
+    "도면에서 해야 할 작업"
+  ],
+  "diagramTasks": [
+    "다이어그램에서 해야 할 작업"
   ],
   "nextCriticChecklist": ["다음 크리틱에 보여줄 항목"],
   "presentationLines": ["발표 때 사용할 수 있는 문장"],
-  "portfolioNarrative": "포트폴리오에 넣을 수 있는 설계 발전 서사",
-  "riskQuestions": ["다시 물어볼 가능성이 높은 질문"]
+  "riskQuestions": ["교수나 리뷰어가 다시 물어볼 가능성이 높은 질문"],
+  "portfolioNarrative": "포트폴리오에 넣을 수 있는 설계 발전 서사"
 }
+
+품질 기준:
+- actionItems는 최소 3개를 작성한다.
+- 각 actionItems.detail은 도면/다이어그램/발표문에서 실제로 무엇을 표시하거나 고칠지 말한다.
+- reviewCriteria는 다음 크리틱 때 판단 기준으로 사용할 수 있게 쓴다.
+- summary는 짧게, designDiagnosis와 whyItMatters는 더 구체적으로 쓴다.
 
 프로젝트:
 ${projectDigest(project)}
@@ -1180,14 +1700,16 @@ function projectDigest(project) {
 피드백 ${feedback.date} / ${feedback.source}
 원문: ${feedback.rawText}
 분석: ${feedback.analysis?.summary || "분석 없음"}
-카테고리: ${(feedback.analysis?.categories || feedback.keywords || []).join(", ")}
+설계 진단: ${feedback.analysis?.designDiagnosis || feedback.analysis?.designIssue || "진단 없음"}
+검토 기준: ${(feedback.analysis?.reviewCriteria || []).join(" / ") || "없음"}
+카테고리: ${displayTags(feedback.keywords, feedback.analysis?.categories).join(", ") || "없음"}
 `,
     )
     .join("\n");
   const tasks = project.tasks
     .map(
       (task) =>
-        `- [${STATUS_LABELS[task.status]}] ${task.title} / ${task.category} / ${PRIORITY_LABELS[task.priority]} / ${task.outputType}`,
+        `- [${STATUS_LABELS[task.status]}] ${task.title} / ${task.category} / ${PRIORITY_LABELS[task.priority]} / ${task.outputType} / ${task.detail || task.reason}`,
     )
     .join("\n");
   return `
@@ -1212,57 +1734,129 @@ function fallbackAnalysis(project, feedback) {
   const primary = categories[0] || "기타";
   const second = categories[1] || "표현 / 패널";
   const topic = project.topic || project.title;
+  const sourceText = `${project.topic} ${project.concept} ${feedback.rawText}`;
+  const hasWasteSystem = /폐기물|쓰레기|하역|열분해|처리|반입/.test(sourceText);
+  const hasVisitorFlow = /관람|방문|전시|교육/.test(sourceText);
+  const hasCarbonSystem = /co2|co₂|이산화탄소|탄소|순환/i.test(sourceText);
+  const diagnosis = hasWasteSystem || hasVisitorFlow
+    ? "프로그램 간 동선 위계와 환경 제어 경계가 불명확합니다. 운영·처리 흐름과 관람 경험이 어디서 분리되고 어디서 시각적으로 연결되는지 도면에서 더 분명하게 읽혀야 합니다."
+    : "피드백은 설계 의도와 실제 산출물 사이의 연결이 약한 지점을 가리킵니다. 개념, 공간 구성, 표현 방식이 같은 기준으로 정렬되어야 합니다.";
+  const whyItMatters = hasWasteSystem
+    ? "폐기물 처리 시설은 위생, 안전, 운영 동선이 설계 신뢰도를 좌우합니다. 관람 동선이 처리 동선과 충돌하면 교육 프로그램의 설득력도 약해지고, 하역장이나 음압 구역의 경계가 모호하면 공간의 안전 기준을 설명하기 어렵습니다."
+    : "설계 문제의 원인이 도면에서 검증되지 않으면 크리틱은 형태 취향이나 표현 방식의 논쟁으로 흐르기 쉽습니다. 다음 검토 전에는 어떤 산출물에서 어떤 판단을 확인할 수 있는지 명확히 해야 합니다.";
+  const drawingTasks = hasWasteSystem
+    ? [
+        "평면도에 차량 반입, 운영자 이동, 관람객 이동을 서로 다른 선형과 출입 지점으로 표시한다.",
+        "핵심 단면에 하역장, 처리 모듈, 음압 또는 차단 구역, 관람 가능 경계를 함께 표시한다.",
+      ]
+    : [
+        `${primary} 쟁점이 드러나는 핵심 평면 또는 단면을 한 장 선택해 수정 전후를 비교한다.`,
+        "공개 영역, 운영 영역, 완충 영역처럼 판단 기준이 되는 경계를 도면 범례로 표시한다.",
+      ];
+  const diagramTasks = hasCarbonSystem
+    ? [
+        "CO₂ 흐름, 에너지 흐름, 관람 시선을 분리한 시스템 다이어그램을 만든다.",
+        "환경 시스템이 실제 공간에서 보이는 지점과 숨겨지는 지점을 레이어로 구분한다.",
+      ]
+    : [
+        "피드백 이전과 이후의 설계 판단 변화를 한 장의 전후 비교 다이어그램으로 정리한다.",
+        "프로그램, 동선, 공간 경험의 관계를 선과 영역으로 단순화해 표시한다.",
+      ];
   return {
-    summary: `${feedback.source} 피드백의 핵심은 ${primary} 관점에서 ${topic}의 설계 논리를 더 명확히 보여주는 것입니다.`,
+    summary: `${feedback.source} 피드백의 핵심은 ${primary} 관점에서 ${topic}의 설계 판단을 도면과 다이어그램으로 검증하라는 것입니다.`,
     categories,
-    designIssue:
-      "현재 피드백은 설계 의도와 실제 산출물 사이의 연결이 충분히 읽히지 않는 지점을 가리킵니다. 도면, 다이어그램, 발표 문장을 서로 맞물리게 정리할 필요가 있습니다.",
+    designIssue: diagnosis,
+    designDiagnosis: diagnosis,
+    whyItMatters,
+    reviewCriteria: [
+      hasWasteSystem
+        ? "폐기물 반입, 운영자 이동, 관람객 동선이 평면에서 서로 다른 출입과 흐름으로 구분되는가?"
+        : `${primary} 문제가 도면에서 검토 가능한 기준으로 표시되는가?`,
+      hasCarbonSystem
+        ? "CO₂ 또는 환경 시스템의 흐름이 단면과 다이어그램에서 공간적 경계와 함께 읽히는가?"
+        : "개념 설명이 실제 평면, 단면, 매스, 패널 표현으로 연결되는가?",
+      "다음 크리틱에서 리뷰어가 같은 도면을 보고 수정 의도를 바로 확인할 수 있는가?",
+    ],
     actionItems: [
       {
-        title: `${primary} 이슈를 한 장의 핵심 도면으로 다시 정리`,
+        title: hasWasteSystem
+          ? "폐기물 반입 동선과 관람객 동선을 분리한 평면 대안 작성"
+          : `${primary} 이슈를 한 장의 핵심 도면으로 다시 정리`,
         priority: feedback.importance === "high" ? "high" : "normal",
-        category: primary,
+        category: hasWasteSystem ? "동선" : primary,
         reason:
-          "크리틱에서 지적된 문제가 실제 공간 구성에서 어떻게 해결되는지 바로 확인할 수 있어야 합니다.",
-        outputType: primary.includes("단면") ? "단면도" : primary.includes("평면") ? "평면도" : "다이어그램",
+          hasWasteSystem
+            ? "처리 시설의 위생·안전 흐름과 전시/교육 흐름이 겹치면 프로그램 위계가 흐려집니다."
+            : "크리틱에서 지적된 문제가 실제 공간 구성에서 어떻게 해결되는지 바로 확인할 수 있어야 합니다.",
+        outputType: hasWasteSystem
+          ? "평면도"
+          : primary.includes("단면")
+            ? "단면도"
+            : primary.includes("평면")
+              ? "평면도"
+              : "다이어그램",
+        detail: hasWasteSystem
+          ? "차량 진입, 하역, 운영자 이동, 관람객 진입을 서로 다른 색과 선형으로 표시하고 교차 지점은 완충실, 관람창, 레벨 차이 중 하나로 처리합니다."
+          : "수정 전 도면과 수정 후 도면을 나란히 두고, 바뀐 경계·동선·프로그램 관계를 굵은 선과 짧은 주석으로 표시합니다.",
       },
       {
-        title: `${second} 관점의 전후 비교 다이어그램 작성`,
-        priority: "normal",
-        category: second,
+        title: hasWasteSystem
+          ? "하역장과 처리 모듈을 통과하는 핵심 단면 작성"
+          : `${second} 관점의 전후 비교 다이어그램 작성`,
+        priority: hasWasteSystem ? "high" : "normal",
+        category: hasWasteSystem ? "단면" : second,
         reason:
-          "피드백 이전과 이후의 판단 변화를 시각적으로 보여주면 설계 발전 과정이 더 선명해집니다.",
-        outputType: "다이어그램 / 패널",
+          hasWasteSystem
+            ? "공정과 환경 제어가 단면에서 보이지 않으면 기술 시스템이 건축 공간으로 번역되지 않습니다."
+            : "피드백 이전과 이후의 판단 변화를 시각적으로 보여주면 설계 발전 과정이 더 선명해집니다.",
+        outputType: hasWasteSystem ? "단면도 / 다이어그램" : "다이어그램 / 패널",
+        detail: hasWasteSystem
+          ? "하역장, 처리 모듈, 음압 구역, 관람 가능 구역의 경계를 한 단면에 겹쳐 표시하고 공기 흐름은 별도 화살표로 분리합니다."
+          : "문제 지점, 수정 판단, 기대 효과를 3단계로 나누고 각 단계에 대응하는 도면 조각을 함께 배치합니다.",
       },
       {
-        title: "피드백을 반영한 30초 발표 문장 정리",
+        title: hasCarbonSystem ? "CO₂ 순환 시스템의 공개 범위 다이어그램 추가" : "피드백을 반영한 30초 발표 문장 정리",
         priority: "normal",
-        category: "발표 논리",
+        category: hasCarbonSystem ? "환경" : "발표 논리",
         reason:
-          "도면 수정 의도를 말로 압축해 두면 다음 크리틱에서 질문이 들어와도 답변 흐름이 흔들리지 않습니다.",
-        outputType: "발표문",
+          hasCarbonSystem
+            ? "환경 시스템이 실제 공간에서 어디까지 드러나는지 보여줘야 개념과 체험이 연결됩니다."
+            : "도면 수정 의도를 말로 압축해 두면 다음 크리틱에서 질문이 들어와도 답변 흐름이 흔들리지 않습니다.",
+        outputType: hasCarbonSystem ? "다이어그램 / 패널" : "발표문",
+        detail: hasCarbonSystem
+          ? "CO₂ 흐름, 설비 위치, 관람 시선을 분리된 레이어로 그리고, 관람자가 직접 보는 장면과 내부에서만 작동하는 장치를 구분합니다."
+          : "문제 진단, 수정 기준, 다음 검토에서 확인받을 점을 각각 한 문장으로 압축합니다.",
       },
     ],
-    nextCriticChecklist: [
-      `${primary} 수정 전후가 보이는 핵심 도면`,
-      "피드백을 반영한 설계 판단 다이어그램",
+    drawingTasks,
+    diagramTasks,
+    nextCriticChecklist: uniqueStrings([
+      ...drawingTasks,
+      ...diagramTasks,
       "다음 질문에 답할 수 있는 짧은 발표 문장",
-    ],
+    ]),
     presentationLines: [
-      `이번 수정에서는 ${primary} 문제가 단순한 표현 문제가 아니라 설계 구조의 문제라고 보고, 도면과 발표 논리를 함께 조정했습니다.`,
-      "피드백을 반영해 프로그램, 동선, 공간 경험이 서로 분리되지 않도록 다시 연결했습니다.",
+      hasWasteSystem
+        ? "이번 수정에서는 폐기물 처리 동선과 관람 동선을 분리해 위생·안전 흐름을 먼저 확보하고, 관람은 통제된 경계 안에서 이루어지도록 조정했습니다."
+        : `이번 수정에서는 ${primary} 문제가 단순한 표현 문제가 아니라 설계 구조의 문제라고 보고, 도면과 발표 논리를 함께 조정했습니다.`,
+      hasCarbonSystem
+        ? "CO₂ 순환 시스템은 설비 설명이 아니라 단면에서 읽히는 공간 장치로 보이도록 정리했습니다."
+        : "피드백을 반영해 프로그램, 동선, 공간 경험이 서로 분리되지 않도록 다시 연결했습니다.",
     ],
     portfolioNarrative:
-      "초기안은 개념 설명에 비해 도면에서 설계 판단이 충분히 드러나지 않았다. 크리틱 이후 피드백을 작업 단위로 나누고, 핵심 도면과 발표 논리를 함께 수정하면서 설계의 변화 과정이 더 읽히도록 발전시켰다.",
+      hasWasteSystem
+        ? "초기안은 폐기물 처리와 관람 프로그램을 병치하는 데 머물렀지만, 크리틱 이후 운영 동선과 관람 동선을 분리하고 환경 제어 경계를 단면과 다이어그램으로 드러내는 방향으로 발전했다."
+        : "초기안은 개념 설명에 비해 도면에서 설계 판단이 충분히 드러나지 않았다. 크리틱 이후 피드백을 작업 단위로 나누고, 핵심 도면과 발표 논리를 함께 수정하면서 설계의 변화 과정이 더 읽히도록 발전시켰다.",
     riskQuestions: [
-      "이 수정이 실제 공간 경험에서는 어떤 장면으로 드러나는가?",
-      "기존 안과 비교했을 때 가장 크게 달라진 설계 판단은 무엇인가?",
+      hasVisitorFlow ? "관람객은 처리 공정 또는 운영 과정을 어디까지 볼 수 있는가?" : "이 수정이 실제 공간 경험에서는 어떤 장면으로 드러나는가?",
+      hasWasteSystem ? "음압 또는 차단 구역은 어디서 시작되고 어디서 끝나는가?" : "기존 안과 비교했을 때 가장 크게 달라진 설계 판단은 무엇인가?",
+      hasCarbonSystem ? "CO₂ 순환 시스템은 공간에서 보이는 장면과 숨겨지는 장치가 어떻게 나뉘는가?" : "다음 크리틱에서 검토 필요로 남겨둘 쟁점은 무엇인가?",
     ],
   };
 }
 
 function inferCategories(text, keywords = []) {
-  const source = `${text} ${keywords.join(" ")}`;
+  const source = `${text} ${normalizeTags(keywords).join(" ")}`;
   const rules = [
     ["동선", /동선|흐름|접근|이동|반입|관람/],
     ["단면", /단면|층|수직|레벨|높이/],
@@ -1277,7 +1871,11 @@ function inferCategories(text, keywords = []) {
     ["발표 논리", /발표|논리|설명|말|서사/],
   ];
   const found = rules.filter(([, pattern]) => pattern.test(source)).map(([category]) => category);
-  return uniqueStrings([...keywords.filter((keyword) => CATEGORIES.includes(keyword)), ...found, "기타"]).slice(0, 5);
+  const keywordCategories = normalizeTags(keywords)
+    .map(mapLooseCategory)
+    .filter((keyword) => CATEGORIES.includes(keyword));
+  const categories = uniqueStrings([...keywordCategories, ...found]);
+  return (categories.length > 0 ? categories : ["기타"]).slice(0, 5);
 }
 
 function fallbackCriticPlan(project) {
@@ -1290,10 +1888,16 @@ function fallbackCriticPlan(project) {
     mustFix: uniqueStrings(highTasks.length ? highTasks : openTasks).slice(0, 5),
     reviewMaterials: uniqueStrings(
       analyses.flatMap((analysis) => analysis.nextCriticChecklist).concat(
+        analyses.flatMap((analysis) => analysis.drawingTasks || []),
+        analyses.flatMap((analysis) => analysis.diagramTasks || []),
         project.tasks.map((task) => task.outputType).filter(Boolean),
       ),
     ).slice(0, 6),
-    riskQuestions: uniqueStrings(analyses.flatMap((analysis) => analysis.riskQuestions)).slice(0, 5),
+    riskQuestions: uniqueStrings(
+      analyses.flatMap((analysis) => analysis.riskQuestions).concat(
+        analyses.flatMap((analysis) => analysis.reviewCriteria || []),
+      ),
+    ).slice(0, 5),
     answerLines: uniqueStrings(analyses.flatMap((analysis) => analysis.presentationLines)).slice(0, 4),
     presentationOrder: [
       "이전 크리틱에서 나온 핵심 문제를 먼저 짚는다.",
@@ -1343,7 +1947,7 @@ function hasPortfolio(draft) {
 }
 
 function parseKeywords(value) {
-  return uniqueStrings(
+  return normalizeTags(
     String(value || "")
       .split(/[,，、\n]/)
       .map((item) => item.trim())

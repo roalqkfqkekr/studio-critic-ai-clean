@@ -261,6 +261,61 @@ h1 {
   padding: 0.8rem;
 }
 
+.diagnostic-panel {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfa;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.diagnostic-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.diagnostic-head strong {
+  color: var(--ink);
+}
+
+.diagnostic-panel dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 0.8rem;
+  margin: 0;
+}
+
+.diagnostic-panel dl div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.diagnostic-panel dt {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.diagnostic-panel dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
+.diagnostic-help {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .grid-form,
 .feedback-form {
   display: grid;
@@ -459,6 +514,51 @@ select:focus {
   line-height: 1.35;
 }
 
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.analysis-section {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfa;
+}
+
+.analysis-section.compact {
+  margin-top: 0;
+}
+
+.analysis-section p {
+  margin: 0;
+}
+
+.analysis-actions {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.analysis-action {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.analysis-action strong {
+  line-height: 1.35;
+}
+
+.analysis-action p {
+  margin: 0;
+  color: var(--muted);
+}
+
 h4 {
   margin: 1rem 0 0.35rem;
   color: var(--muted);
@@ -536,6 +636,11 @@ ol {
   margin-bottom: 0;
 }
 
+.task-detail {
+  padding-left: 0.65rem;
+  border-left: 2px solid var(--line);
+}
+
 .output-panel {
   max-height: 560px;
   overflow: auto;
@@ -607,6 +712,19 @@ ol {
 
   .form-actions button {
     width: 100%;
+  }
+
+  .diagnostic-head,
+  .diagnostic-panel dl {
+    grid-template-columns: 1fr;
+  }
+
+  .diagnostic-head {
+    display: grid;
+  }
+
+  .analysis-grid {
+    grid-template-columns: 1fr;
   }
 
   .top-actions {
