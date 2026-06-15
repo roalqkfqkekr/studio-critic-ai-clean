@@ -1,0 +1,69 @@
+# env / secrets
+.env
+.env.*
+firebaseConfig.js
+src/firebaseConfig.js
+!src/firebaseConfig.example.js
+
+# Local Firebase/Gemini configuration with real keys
+server/.env
+
+# Node / build
+node_modules/
+dist/
+build/
+coverage/
+server/node_modules/
+
+# Flutter/Dart/Pub artifacts from the previous local project
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+pubspec.lock
+pubspec.yaml
+.pub-cache/
+.pub/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+app.*.symbols
+app.*.map.json
+/android/app/debug
+/android/app/profile
+/android/app/release
+android/
+ios/
+linux/
+macos/
+windows/
+test/
+lib/
+
+# OS/editor noise
+.DS_Store
+*.log
+*.class
+*.iml
+*.ipr
+*.iws
+*.pyc
+*.swp
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+.idea/
+.vscode/
+
+# Legacy project leftovers
+server/
+docs/
+installer/
+tool/
+assets/branding/
+
+# Local review artifacts
+screenshots/

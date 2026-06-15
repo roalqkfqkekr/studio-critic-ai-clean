@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="건축 설계 크리틱 피드백을 작업 리스트, 다음 크리틱 준비, 발표 문장, 포트폴리오 서사로 바꾸는 정적 AI 웹앱"
+    />
+    <title>studio-critic-ai</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-block">
+        <p class="eyebrow">Architecture Studio Manager</p>
+        <h1>studio-critic-ai</h1>
+      </div>
+      <div class="active-project-chip" id="activeProjectName">프로젝트 로딩 중</div>
+      <nav class="top-actions" aria-label="주요 작업">
+        <button class="primary" id="analyzeBtn" type="button" title="선택된 피드백을 다시 분석합니다.">
+          선택 피드백 분석
+        </button>
+        <button id="criticPrepBtn" type="button" title="누적 피드백과 작업 목록으로 다음 크리틱 준비안을 만듭니다.">
+          다음 크리틱
+        </button>
+        <button id="portfolioBtn" type="button" title="누적 피드백과 완료 작업으로 포트폴리오 서사를 만듭니다.">
+          포트폴리오 서사
+        </button>
+        <button id="exportBtn" type="button" title="현재 localStorage 데이터를 JSON 파일로 백업합니다.">
+          JSON 내보내기
+        </button>
+        <label class="file-button" for="importFile" title="studio-critic-ai JSON 백업 파일을 불러옵니다.">JSON 불러오기</label>
+        <input id="importFile" type="file" accept="application/json" hidden />
+        <button id="resetSampleBtn" type="button">샘플 복원</button>
+        <button class="danger" id="clearStorageBtn" type="button">초기화</button>
+      </nav>
+    </header>
+
+    <main class="app-shell">
+      <aside class="sidebar panel">
+        <div class="section-heading">
+          <span>Projects</span>
+          <button id="newProjectBtn" type="button">새 프로젝트</button>
+        </div>
+        <div id="projectList" class="project-list"></div>
+        <div class="notice small">
+          현재 기본 상태는 Mock 모드입니다. Firebase 설정이 없으면 샘플 분석으로 실행됩니다. 데이터는 현재 브라우저의
+          localStorage에만 저장됩니다.
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <article class="panel project-editor">
+          <div class="section-heading">
+            <span>Project Brief</span>
+            <span class="status-pill" id="aiModePill">AI 상태 확인 중</span>
+          </div>
+          <form id="projectForm" class="grid-form">
+            <label>
+              프로젝트명
+              <input id="projectTitle" name="title" required />
+            </label>
+            <label>
+              설계 주제
+              <input id="projectTopic" name="topic" />
+            </label>
+            <label>
+              대지 / 위치
+              <input id="projectSite" name="site" />
+            </label>
+            <label>
+              현재 단계
+              <input id="projectStage" name="stage" />
+            </label>
+            <label>
+              다음 크리틱 / 마감일
+              <input id="projectDeadline" name="deadline" type="date" />
+            </label>
+            <label class="wide">
+              핵심 컨셉
+              <textarea id="projectConcept" name="concept" rows="3"></textarea>
+            </label>
+            <label class="wide">
+              메모
+              <textarea id="projectNotes" name="notes" rows="3"></textarea>
+            </label>
+            <div class="form-actions wide">
+              <button class="primary" type="submit">프로젝트 저장</button>
+              <button class="danger" id="deleteProjectBtn" type="button">프로젝트 삭제</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="panel feedback-entry">
+          <div class="section-heading">
+            <span>Critic Feedback Input</span>
+            <span id="inputLength" class="muted">0자 입력</span>
+          </div>
+          <form id="feedbackForm" class="feedback-form">
+            <div class="form-row">
+              <label>
+                날짜
+                <input id="feedbackDate" type="date" required />
+              </label>
+              <label>
+                출처
+                <select id="feedbackSource">
+                  <option>교수</option>
+                  <option>튜터</option>
+                  <option>본인</option>
+                  <option>클라이언트</option>
+                  <option>기타</option>
+                </select>
+              </label>
+              <label>
+                중요도
+                <select id="feedbackImportance">
+                  <option value="normal">보통</option>
+                  <option value="high">높음</option>
+                  <option value="low">낮음</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              관련 키워드
+              <input id="feedbackKeywords" placeholder="예: 동선, 단면, CO2" />
+            </label>
+            <label>
+              피드백 원문
+              <textarea
+                id="feedbackText"
+                rows="6"
+                placeholder="크리틱에서 들은 말을 그대로 붙여넣으세요."
+                required
+              ></textarea>
+            </label>
+            <div class="helper-row">
+              <span>권장 입력 길이는 4,000자 이하입니다. 긴 기록은 핵심 피드백 단위로 나누면 무료 한도 관리에 유리합니다.</span>
+              <button class="primary" type="submit">저장하고 분석</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="panel timeline-panel">
+          <div class="section-heading">
+            <span>Feedback Timeline</span>
+          </div>
+          <div id="feedbackTimeline" class="timeline"></div>
+        </article>
+      </section>
+
+      <aside class="inspector">
+        <section class="panel">
+          <div class="section-heading">
+            <span>AI Analysis Card</span>
+          </div>
+          <div id="analysisCard" class="analysis-card empty">
+            피드백을 저장하면 분석 카드와 작업 카드가 생성됩니다.
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <span>Action List</span>
+          </div>
+          <div id="taskList" class="task-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <span>Next Critic / Portfolio</span>
+          </div>
+          <div id="outputPanel" class="output-panel empty">
+            피드백이 쌓이면 다음 크리틱 준비안과 포트폴리오 서사가 여기에 표시됩니다.
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script defer src="./src/app.js"></script>
+  </body>
+</html>
