@@ -778,10 +778,11 @@ function renderAiDiagnostics() {
     ["마지막 오류 요약", aiDiagnostics.lastErrorSummary || "-"],
   ];
   els.aiDiagnosticPanel.innerHTML = `
-    <div class="diagnostic-head">
-      <strong>Firebase 연결 진단</strong>
-      <span class="status-pill ${aiClient?.available ? "ok" : "warn"}">${escapeHtml(modeLabel)}</span>
-    </div>
+    <details class="diagnostic-shell">
+      <summary class="diagnostic-head">
+        <strong>Firebase 연결 진단</strong>
+        <span class="status-pill ${aiClient?.available ? "ok" : "warn"}">${escapeHtml(modeLabel)}</span>
+      </summary>
     <dl>
       ${rows
         .map(
@@ -798,6 +799,7 @@ function renderAiDiagnostics() {
       API 키가 유효하지 않다면 Firebase Console의 Project settings &gt; Your apps에서 현재 웹앱 config를 다시 복사하고,
       AI Logic의 Gemini Developer API provider 설정을 확인하세요.
     </p>
+    </details>
   `;
 }
 
@@ -817,11 +819,11 @@ function statusText(status) {
 
 function renderProjectList() {
   if (state.projects.length === 0) {
-    els.projectList.innerHTML = `
-      <div class="empty">
-        프로젝트가 없습니다. 새 프로젝트를 만들거나 샘플 복원으로 시작하세요.
-      </div>
-    `;
+    els.projectList.innerHTML = renderEmptyState(
+      "folder",
+      "새 스튜디오 프로젝트를 시작하세요",
+      "프로젝트를 만들고 크리틱 피드백을 누적해보세요.",
+    );
     return;
   }
   const activeId = state.activeProjectId;
@@ -829,8 +831,16 @@ function renderProjectList() {
     .map(
       (project) => `
         <button class="project-item ${project.id === activeId ? "active" : ""}" data-project-id="${escapeAttr(project.id)}" type="button">
-          <strong>${escapeHtml(project.title)}</strong>
-          <span>${escapeHtml(project.stage || project.topic || "단계 미입력")}</span>
+          <span class="project-item-head">
+            <span class="mini-icon icon-folder" aria-hidden="true"></span>
+            <strong>${escapeHtml(project.title)}</strong>
+          </span>
+          <span class="project-stage">${escapeHtml(project.stage || project.topic || "단계 미입력")}</span>
+          <span class="project-metrics">
+            <span>피드백 ${project.feedbacks.length}</span>
+            <span>작업 ${project.tasks.length}</span>
+            <span>${escapeHtml(project.deadline || "마감일 미입력")}</span>
+          </span>
         </button>
       `,
     )
@@ -881,17 +891,26 @@ function setProjectFormDisabled(disabled) {
 function renderFeedbackTimeline() {
   const project = getActiveProject();
   if (!project) {
-    els.feedbackTimeline.innerHTML = `<div class="empty">프로젝트가 없습니다. 새 프로젝트를 만들거나 샘플 복원으로 시작하세요.</div>`;
+    els.feedbackTimeline.innerHTML = renderEmptyState(
+      "folder",
+      "프로젝트가 없습니다",
+      "새 프로젝트를 만들거나 샘플을 복원한 뒤 피드백을 기록하세요.",
+    );
     return;
   }
   if (project.feedbacks.length === 0) {
-    els.feedbackTimeline.innerHTML = `<div class="empty">아직 저장된 피드백이 없습니다. 크리틱 원문을 입력하고 '저장하고 분석'을 눌러 첫 작업 카드를 만드세요.</div>`;
+    els.feedbackTimeline.innerHTML = renderEmptyState(
+      "feedback",
+      "아직 저장된 피드백이 없습니다",
+      "크리틱에서 들은 말을 붙여넣으면 AI가 설계 진단과 작업 카드를 생성합니다.",
+    );
     return;
   }
 
   els.feedbackTimeline.innerHTML = project.feedbacks
     .map((feedback) => {
       const summary = feedback.analysis?.summary || "아직 분석되지 않은 피드백입니다. 재분석을 실행하세요.";
+      const diagnosis = feedback.analysis?.designDiagnosis || feedback.analysis?.designIssue || "";
       const rawPreview = truncate(feedback.rawText, 150);
       const tags = displayTags(feedback.keywords, feedback.analysis?.categories)
         .slice(0, 8)
@@ -906,7 +925,9 @@ function renderFeedbackTimeline() {
               <span class="source">${escapeHtml(feedback.source)}</span>
               <span class="importance ${escapeAttr(feedback.importance)}">${escapeHtml(PRIORITY_LABELS[feedback.importance] || "보통")}</span>
             </div>
-            <p>${escapeHtml(summary)}</p>
+            <span class="feedback-label">AI 요약</span>
+            <p class="feedback-summary">${escapeHtml(summary)}</p>
+            ${diagnosis ? `<p class="feedback-diagnosis">${escapeHtml(truncate(diagnosis, 140))}</p>` : ""}
             <p class="feedback-raw">${escapeHtml(rawPreview)}</p>
             <div class="tags">${tags}</div>
           </button>
@@ -924,8 +945,11 @@ function renderAnalysisCard() {
   const feedback = selectedFeedback();
   if (!feedback) {
     els.analysisCard.className = "analysis-card empty";
-    els.analysisCard.innerHTML =
-      "분석할 피드백이 선택되지 않았습니다. 타임라인에서 피드백을 선택하거나 새 피드백을 저장하세요.";
+    els.analysisCard.innerHTML = renderEmptyState(
+      "spark",
+      "분석할 피드백을 선택하세요",
+      "타임라인에서 피드백을 선택하거나 새 피드백을 저장하면 설계 진단이 표시됩니다.",
+    );
     return;
   }
 
@@ -947,9 +971,15 @@ function renderAnalysisCard() {
         <button data-analysis-action="reanalyze" type="button">재분석</button>
         <button class="danger" data-analysis-action="delete-feedback" type="button">피드백 삭제</button>
       </div>
-      <h3>아직 분석되지 않은 피드백입니다.</h3>
+      <div class="analysis-lead">
+        <span class="card-icon icon-spark" aria-hidden="true"></span>
+        <div>
+          <span class="card-kicker">AI 설계 진단</span>
+          <h3>아직 분석되지 않은 피드백입니다.</h3>
+        </div>
+      </div>
       ${feedbackMeta}
-      <p class="empty">재분석을 실행하면 Mock 분석 카드와 작업 카드가 생성됩니다.</p>
+      ${renderEmptyState("spark", "재분석을 실행하세요", "선택한 피드백의 원문을 기준으로 분석 카드와 작업 카드가 생성됩니다.")}
     `;
     return;
   }
@@ -962,11 +992,13 @@ function renderAnalysisCard() {
       <button data-analysis-action="reanalyze" type="button">재분석</button>
       <button class="danger" data-analysis-action="delete-feedback" type="button">피드백 삭제</button>
     </div>
-    <div class="analysis-section compact">
-      <h4>핵심 요약</h4>
-      <p>${escapeHtml(analysis.summary || "분석 요약 없음")}</p>
+    <div class="analysis-lead">
+      <span class="card-icon icon-spark" aria-hidden="true"></span>
+      <div>
+        <span class="card-kicker">AI 설계 진단</span>
+        <h3>${escapeHtml(diagnosis || "설계 진단이 아직 정리되지 않았습니다.")}</h3>
+      </div>
     </div>
-    ${feedbackMeta}
     <div class="analysis-grid">
       <section class="analysis-section">
         <h4>설계 진단</h4>
@@ -991,10 +1023,13 @@ function renderAnalysisCard() {
         ${renderList(analysis.diagramTasks)}
       </section>
     </div>
-    <h4>발표 문장</h4>
-    ${renderList(analysis.presentationLines)}
     <h4>예상 질문</h4>
     ${renderList(analysis.riskQuestions)}
+    <h4>발표 문장</h4>
+    ${renderList(analysis.presentationLines)}
+    <h4>핵심 요약</h4>
+    <p class="analysis-summary">${escapeHtml(analysis.summary || "분석 요약 없음")}</p>
+    ${feedbackMeta}
     <h4>포트폴리오 서사</h4>
     <p>${escapeHtml(analysis.portfolioNarrative || "누적 피드백이 쌓이면 서사가 더 구체화됩니다.")}</p>
   `;
@@ -1003,20 +1038,31 @@ function renderAnalysisCard() {
 function renderTaskList() {
   const project = getActiveProject();
   if (!project) {
-    els.taskList.innerHTML = `<div class="empty">프로젝트가 없습니다. 새 프로젝트를 만들면 작업 카드가 여기에 표시됩니다.</div>`;
+    els.taskList.innerHTML = renderEmptyState(
+      "folder",
+      "프로젝트가 없습니다",
+      "새 프로젝트를 만들면 분석 결과에서 작업 카드가 정리됩니다.",
+    );
     return;
   }
   if (project.tasks.length === 0) {
-    els.taskList.innerHTML = `<div class="empty">아직 작업 카드가 없습니다. 피드백을 저장하고 분석하면 해야 할 작업이 자동으로 생성됩니다.</div>`;
+    els.taskList.innerHTML = renderEmptyState(
+      "checklist",
+      "아직 작업 카드가 없습니다",
+      "피드백을 분석하면 도면, 다이어그램, 발표 작업이 자동으로 정리됩니다.",
+    );
     return;
   }
 
   els.taskList.innerHTML = project.tasks
     .map(
       (task) => `
-        <article class="task-card">
+        <article class="task-card status-${escapeAttr(task.status)}">
           <div class="task-top">
-            <strong>${escapeHtml(task.title)}</strong>
+            <div class="task-title-row">
+              <span class="task-check" aria-hidden="true"></span>
+              <strong>${escapeHtml(task.title)}</strong>
+            </div>
             <div class="task-actions">
               <button class="status-cycle ${escapeAttr(task.status)}" data-task-id="${escapeAttr(task.id)}" data-task-action="status" type="button">
                 ${escapeHtml(STATUS_LABELS[task.status] || "해야 함")}
@@ -1041,7 +1087,11 @@ function renderOutputPanel() {
   const project = getActiveProject();
   if (!project) {
     els.outputPanel.className = "output-panel empty";
-    els.outputPanel.innerHTML = "프로젝트가 없습니다. 새 프로젝트를 만들거나 샘플 복원으로 시작하세요.";
+    els.outputPanel.innerHTML = renderEmptyState(
+      "board",
+      "프로젝트가 없습니다",
+      "새 프로젝트를 만들거나 샘플을 복원하면 다음 크리틱 준비안을 생성할 수 있습니다.",
+    );
     return;
   }
   if (outputView === "portfolio" && hasPortfolio(project.portfolioDraft)) {
@@ -1057,15 +1107,23 @@ function renderOutputPanel() {
     return;
   }
   els.outputPanel.className = "output-panel empty";
-  els.outputPanel.innerHTML =
-    "피드백과 작업 카드가 쌓이면 다음 크리틱 준비안이나 포트폴리오 서사를 생성할 수 있습니다.";
+  els.outputPanel.innerHTML = renderEmptyState(
+    "board",
+    "다음 출력물이 아직 없습니다",
+    "피드백과 작업 카드가 쌓이면 다음 크리틱 준비안이나 포트폴리오 문장을 생성할 수 있습니다.",
+  );
 }
 
 function renderCriticPanel(plan) {
   els.outputPanel.className = "output-panel";
   els.outputPanel.innerHTML = `
-    <span class="output-source">다음 크리틱 준비</span>
-    <h3>다음 크리틱에서 보여줄 것</h3>
+    <div class="output-head">
+      <span class="card-icon icon-board" aria-hidden="true"></span>
+      <div>
+        <span class="output-source">다음 크리틱 준비</span>
+        <h3>다음 크리틱에서 보여줄 것</h3>
+      </div>
+    </div>
     <h4>이번 주 반드시 수정할 것</h4>
     ${renderList(plan.mustFix)}
     <h4>준비할 도면 / 다이어그램 / 이미지</h4>
@@ -1082,8 +1140,13 @@ function renderCriticPanel(plan) {
 function renderPortfolioPanel(draft) {
   els.outputPanel.className = "output-panel";
   els.outputPanel.innerHTML = `
-    <span class="output-source">포트폴리오 서사</span>
-    <h3>설계 발전 서사 초안</h3>
+    <div class="output-head">
+      <span class="card-icon icon-doc" aria-hidden="true"></span>
+      <div>
+        <span class="output-source">포트폴리오 문장</span>
+        <h3>설계 발전 서사 초안</h3>
+      </div>
+    </div>
     <h4>초기 문제의식</h4>
     <p>${escapeHtml(draft.problem)}</p>
     <h4>주요 피드백</h4>
@@ -1115,7 +1178,7 @@ function displayTags(keywords = [], categories = []) {
 
 function renderActionItems(items) {
   const values = Array.isArray(items) ? items : [];
-  if (values.length === 0) return `<p class="muted">아직 생성된 작업이 없습니다.</p>`;
+  if (values.length === 0) return `<p class="muted list-empty">아직 생성된 작업이 없습니다.</p>`;
   return `
     <div class="analysis-actions">
       ${values
@@ -1140,8 +1203,18 @@ function renderActionItems(items) {
 
 function renderList(items, tagName = "ul") {
   const values = toStringArray(items);
-  if (values.length === 0) return `<p class="muted">아직 생성된 항목이 없습니다.</p>`;
+  if (values.length === 0) return `<p class="muted list-empty">아직 생성된 항목이 없습니다.</p>`;
   return `<${tagName}>${values.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</${tagName}>`;
+}
+
+function renderEmptyState(icon, title, body) {
+  return `
+    <div class="empty-state empty-${escapeAttr(icon)}">
+      <span class="empty-icon icon-${escapeAttr(icon)}" aria-hidden="true"></span>
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(body)}</p>
+    </div>
+  `;
 }
 
 function handleProjectSubmit(event) {
@@ -2093,7 +2166,7 @@ function showToast(message) {
 
 function showOutputNotice(message) {
   els.outputPanel.className = "output-panel empty";
-  els.outputPanel.innerHTML = escapeHtml(message);
+  els.outputPanel.innerHTML = renderEmptyState("board", "생성할 피드백이 필요합니다", message);
 }
 
 function truncate(value, limit) {
