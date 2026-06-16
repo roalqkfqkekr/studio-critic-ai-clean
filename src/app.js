@@ -1,4 +1,6 @@
 const STORAGE_KEY = "studio-critic-ai:v1";
+const ENTRY_KEY = "studioCriticEntered";
+const START_MODE_KEY = "studioCriticStartMode";
 const MODEL_NAME = "gemini-2.5-flash-lite";
 const FIREBASE_SDK_VERSION = "11.10.0";
 const MAX_INPUT_CHARS = 4000;
@@ -39,10 +41,36 @@ const PRIORITY_LABELS = {
   normal: "보통",
   low: "낮음",
 };
+const APP_VIEW_HASHES = {
+  home: "#/app/home",
+  feedback: "#/app/feedback",
+  analysis: "#/app/analysis",
+  tasks: "#/app/tasks",
+  critic: "#/app/critic-prep",
+  portfolio: "#/app/portfolio",
+  settings: "#/app/settings",
+};
+const HASH_VIEW_SEGMENTS = {
+  home: "home",
+  feedback: "feedback",
+  analysis: "analysis",
+  tasks: "tasks",
+  "critic-prep": "critic",
+  portfolio: "portfolio",
+  settings: "settings",
+};
 
 const $ = (id) => document.getElementById(id);
 
 const els = {
+  landingShell: $("landingShell"),
+  appShell: $("appShell"),
+  startChoicePanel: $("startChoicePanel"),
+  openStartButtons: Array.from(document.querySelectorAll("[data-open-start]")),
+  startModeButtons: Array.from(document.querySelectorAll("[data-start-mode]")),
+  closeStartChoiceBtn: $("closeStartChoiceBtn"),
+  closeStartTargets: Array.from(document.querySelectorAll("[data-close-start]")),
+  landingScrollLinks: Array.from(document.querySelectorAll("[data-scroll-target]")),
   projectList: $("projectList"),
   projectForm: $("projectForm"),
   activeProjectName: $("activeProjectName"),
@@ -58,15 +86,33 @@ const els = {
   analysisCard: $("analysisCard"),
   taskList: $("taskList"),
   outputPanel: $("outputPanel"),
+  portfolioPanel: $("portfolioPanel"),
   aiDiagnosticPanel: $("aiDiagnosticPanel"),
+  viewNav: document.querySelector(".view-nav"),
+  viewButtons: Array.from(document.querySelectorAll("[data-view]")),
+  viewPanels: Array.from(document.querySelectorAll("[data-view-panel]")),
+  viewTargets: Array.from(document.querySelectorAll("[data-view-target]")),
+  markdownExportButtons: Array.from(document.querySelectorAll("[data-export-markdown]")),
+  homeProjectSummary: $("homeProjectSummary"),
+  homeRecentAnalysis: $("homeRecentAnalysis"),
+  homeTaskPreview: $("homeTaskPreview"),
+  homeFeedbackSlot: $("homeFeedbackSlot"),
+  feedbackInputSlot: $("feedbackInputSlot"),
+  feedbackInputCard: $("feedbackInputCard"),
   toast: $("toast"),
   importFile: $("importFile"),
   analyzeBtn: $("analyzeBtn"),
   criticPrepBtn: $("criticPrepBtn"),
   portfolioBtn: $("portfolioBtn"),
+  copyAnalysisBtn: $("copyAnalysisBtn"),
+  copyCriticBtn: $("copyCriticBtn"),
+  copyPortfolioBtn: $("copyPortfolioBtn"),
+  copyTasksBtn: $("copyTasksBtn"),
   exportBtn: $("exportBtn"),
   resetSampleBtn: $("resetSampleBtn"),
   clearStorageBtn: $("clearStorageBtn"),
+  returnLandingBtn: $("returnLandingBtn"),
+  backupPanel: $("backupPanel"),
   newProjectBtn: $("newProjectBtn"),
   deleteProjectBtn: $("deleteProjectBtn"),
 };
@@ -74,6 +120,7 @@ const els = {
 let state = loadState();
 let selectedFeedbackId = null;
 let outputView = "critic";
+let currentView = "home";
 let aiClient = null;
 let isBusy = false;
 let lastAiFallbackReason = "";
@@ -103,10 +150,24 @@ function init() {
   ensureSelection();
   els.feedbackDate.value = today();
   bindEvents();
-  renderAll();
+  syncRouteFromHash();
 }
 
 function bindEvents() {
+  els.openStartButtons.forEach((button) => {
+    button.addEventListener("click", openStartChoice);
+  });
+  els.startModeButtons.forEach((button) => {
+    button.addEventListener("click", () => startWithMode(button.dataset.startMode));
+  });
+  els.closeStartChoiceBtn?.addEventListener("click", closeStartChoice);
+  els.closeStartTargets.forEach((target) => {
+    target.addEventListener("click", closeStartChoice);
+  });
+  els.landingScrollLinks.forEach((link) => {
+    link.addEventListener("click", handleLandingScrollLink);
+  });
+  window.addEventListener("hashchange", syncRouteFromHash);
   els.projectForm.addEventListener("submit", handleProjectSubmit);
   els.feedbackForm.addEventListener("submit", handleFeedbackSubmit);
   els.feedbackText.addEventListener("input", renderInputLength);
@@ -114,15 +175,528 @@ function bindEvents() {
   els.feedbackTimeline.addEventListener("click", handleTimelineClick);
   els.analysisCard.addEventListener("click", handleAnalysisCardClick);
   els.taskList.addEventListener("click", handleTaskClick);
+  els.viewNav?.addEventListener("click", handleViewNavClick);
+  els.viewTargets.forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.viewTarget || "home"));
+  });
+  els.markdownExportButtons.forEach((button) => {
+    button.addEventListener("click", exportProjectAsMarkdown);
+  });
   els.analyzeBtn.addEventListener("click", handleAnalyzeButton);
   els.criticPrepBtn.addEventListener("click", handleCriticPrep);
   els.portfolioBtn.addEventListener("click", handlePortfolioDraft);
+  els.copyAnalysisBtn?.addEventListener("click", handleCopyAnalysis);
+  els.copyCriticBtn?.addEventListener("click", handleCopyCriticPlan);
+  els.copyPortfolioBtn?.addEventListener("click", handleCopyPortfolio);
+  els.copyTasksBtn?.addEventListener("click", handleCopyTasks);
   els.exportBtn.addEventListener("click", exportData);
   els.importFile.addEventListener("change", importData);
   els.resetSampleBtn.addEventListener("click", resetSample);
   els.clearStorageBtn.addEventListener("click", clearStorage);
+  els.returnLandingBtn?.addEventListener("click", returnToLanding);
   els.newProjectBtn.addEventListener("click", createNewProject);
   els.deleteProjectBtn.addEventListener("click", deleteActiveProject);
+}
+
+function hasEnteredApp() {
+  return localStorage.getItem(ENTRY_KEY) === "true";
+}
+
+function getDefaultHash() {
+  return hasEnteredApp() ? "#/app/home" : "#/landing";
+}
+
+function getRouteFromHash() {
+  const hash = window.location.hash || "";
+  if (!hash) return { redirectTo: getDefaultHash() };
+  if (hash === "#/landing") return { screen: "landing" };
+  if (hash === "#/start") return { screen: "start" };
+
+  const appRoute = hash.match(/^#\/app\/([^/?#]+)/);
+  if (appRoute) {
+    const view = HASH_VIEW_SEGMENTS[appRoute[1]];
+    if (view) return { screen: "app", view };
+    return { redirectTo: APP_VIEW_HASHES.home };
+  }
+
+  return { redirectTo: getDefaultHash() };
+}
+
+function navigateTo(hash, options = {}) {
+  const target = hash.startsWith("#") ? hash : `#${hash}`;
+  if (window.location.hash === target) {
+    syncRouteFromHash();
+    return;
+  }
+
+  if (options.replace) {
+    window.history.replaceState(null, "", target);
+    syncRouteFromHash();
+    return;
+  }
+
+  window.location.hash = target;
+  syncRouteFromHash();
+}
+
+function syncRouteFromHash() {
+  const route = getRouteFromHash();
+  if (route.redirectTo) {
+    navigateTo(route.redirectTo, { replace: true });
+    return;
+  }
+  applyRoute(route);
+}
+
+function applyRoute(route) {
+  if (route.screen === "landing") {
+    showLandingShell();
+    return;
+  }
+
+  if (route.screen === "start") {
+    showLandingShell({ startChoice: true });
+    return;
+  }
+
+  localStorage.setItem(ENTRY_KEY, "true");
+  showAppShell();
+  setView(route.view, { updateHash: false });
+}
+
+function showLandingShell(options = {}) {
+  els.landingShell?.classList.remove("is-hidden");
+  els.appShell?.classList.add("is-hidden");
+  els.appShell?.classList.remove("is-visible");
+  setStartChoiceVisible(options.startChoice === true);
+}
+
+function showAppShell() {
+  els.landingShell?.classList.add("is-hidden");
+  els.appShell?.classList.remove("is-hidden");
+  els.appShell?.classList.add("is-visible");
+  setStartChoiceVisible(false);
+}
+
+function setStartChoiceVisible(visible) {
+  els.startChoicePanel?.classList.toggle("is-hidden", !visible);
+  els.startChoicePanel?.setAttribute("aria-hidden", visible ? "false" : "true");
+}
+
+function openStartChoice() {
+  navigateTo("#/start");
+  window.setTimeout(() => els.startChoicePanel?.querySelector("[data-start-mode]")?.focus(), 0);
+}
+
+function closeStartChoice() {
+  navigateTo("#/landing");
+}
+
+function handleLandingScrollLink(event) {
+  event.preventDefault();
+  navigateTo("#/landing");
+  const targetId = event.currentTarget.dataset.scrollTarget;
+  window.setTimeout(() => {
+    document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+}
+
+function enterApp(view = "home") {
+  localStorage.setItem(ENTRY_KEY, "true");
+  navigateTo(APP_VIEW_HASHES[view] || APP_VIEW_HASHES.home);
+}
+
+function returnToLanding() {
+  localStorage.removeItem(ENTRY_KEY);
+  localStorage.removeItem(START_MODE_KEY);
+  navigateTo("#/landing");
+}
+
+function startWithMode(mode) {
+  const startMode = ["demo", "new", "import"].includes(mode) ? mode : "demo";
+  localStorage.setItem(START_MODE_KEY, startMode);
+  setStartChoiceVisible(false);
+
+  if (startMode === "demo") {
+    activateDemoProject();
+    navigateTo(APP_VIEW_HASHES.home);
+    showToast("데모 프로젝트로 시작합니다.");
+    return;
+  }
+
+  if (startMode === "new") {
+    createNewProject({ silent: true });
+    navigateTo(APP_VIEW_HASHES.settings);
+    window.setTimeout(() => {
+      els.projectForm?.scrollIntoView({ block: "start" });
+      els.projectForm?.querySelector("input")?.focus();
+    }, 0);
+    showToast("새 프로젝트로 시작합니다. 프로젝트 정보를 입력하세요.");
+    return;
+  }
+
+  navigateTo(APP_VIEW_HASHES.settings);
+  window.setTimeout(highlightBackupPanel, 0);
+  showToast("백업 불러오기에서 JSON 파일을 선택하세요.");
+}
+
+function activateDemoProject() {
+  const existingDemo = state.projects.find(isDemoProject);
+  if (existingDemo) {
+    state.activeProjectId = existingDemo.id;
+  } else {
+    const sampleProject = createSampleState().projects[0];
+    state.projects.unshift(sampleProject);
+    state.activeProjectId = sampleProject.id;
+  }
+  selectedFeedbackId = getActiveProject()?.feedbacks[0]?.id || null;
+  outputView = "critic";
+  saveState();
+  renderAll();
+}
+
+function isDemoProject(project) {
+  return project.title === "시흥 IC 순환 자원 관람 인프라" || String(project.notes || "").includes("샘플 모드");
+}
+
+function highlightBackupPanel() {
+  if (!els.backupPanel) return;
+  els.backupPanel.scrollIntoView({ block: "center" });
+  els.backupPanel.focus({ preventScroll: true });
+  els.backupPanel.classList.add("start-highlight");
+  window.setTimeout(() => els.backupPanel?.classList.remove("start-highlight"), 1800);
+}
+
+function handleCopyAnalysis() {
+  const feedback = selectedFeedback();
+  if (!feedback?.analysis) {
+    showToast("복사할 분석 결과가 없습니다. 먼저 피드백을 분석하세요.");
+    return;
+  }
+  copyToClipboard(formatAnalysisForCopy(feedback.analysis, feedback), "분석 결과가 복사되었습니다.");
+}
+
+function handleCopyCriticPlan() {
+  const project = getActiveProject();
+  if (!project || !hasCriticPlan(project.criticPlan)) {
+    showToast("복사할 크리틱 준비 내용이 없습니다. 먼저 다음 크리틱 준비를 생성하세요.");
+    return;
+  }
+  copyToClipboard(formatCriticPlanForCopy(project), "크리틱 준비 내용이 복사되었습니다.");
+}
+
+function handleCopyPortfolio() {
+  const project = getActiveProject();
+  if (!project || !hasPortfolio(project.portfolioDraft)) {
+    showToast("복사할 포트폴리오 문장이 없습니다. 먼저 포트폴리오 문장을 생성하세요.");
+    return;
+  }
+  copyToClipboard(formatPortfolioForCopy(project), "포트폴리오 문장이 복사되었습니다.");
+}
+
+function handleCopyTasks() {
+  const project = getActiveProject();
+  if (!project || project.tasks.length === 0) {
+    showToast("복사할 작업 리스트가 없습니다.");
+    return;
+  }
+  copyToClipboard(formatTasksForCopy(project), "작업 리스트가 복사되었습니다.");
+}
+
+async function copyToClipboard(text, successMessage = "복사되었습니다.") {
+  const value = String(text || "").trim();
+  if (!value) {
+    showToast("복사할 내용이 없습니다.");
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      fallbackCopyText(value);
+    }
+    showToast(successMessage);
+  } catch (error) {
+    console.info("Clipboard copy failed", error);
+    try {
+      fallbackCopyText(value);
+      showToast(successMessage);
+    } catch (fallbackError) {
+      console.info("Fallback copy failed", fallbackError);
+      showToast("복사에 실패했습니다. 텍스트를 직접 선택해 복사해주세요.");
+    }
+  }
+}
+
+function fallbackCopyText(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("document.execCommand('copy') returned false.");
+  }
+}
+
+function formatAnalysisForCopy(analysis, feedback) {
+  const diagnosis = analysis.designDiagnosis || analysis.designIssue;
+  return [
+    copyBlock("설계 진단", diagnosis),
+    copyBlock("왜 중요한가", analysis.whyItMatters),
+    copyListBlock("검토 기준", analysis.reviewCriteria),
+    copyListBlock("도면 작업", analysis.drawingTasks),
+    copyListBlock("다이어그램 작업", analysis.diagramTasks),
+    copyListBlock("예상 질문", analysis.riskQuestions),
+    copyListBlock("발표 문장", analysis.presentationLines),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function formatCriticPlanForCopy(project) {
+  const plan = project.criticPlan || emptyCriticPlan();
+  return [
+    copyListBlock("이번 주 반드시 수정할 것", plan.mustFix),
+    copyListBlock("다음 크리틱 때 보여줄 자료", plan.reviewMaterials),
+    copyListBlock("예상 질문", plan.riskQuestions),
+    copyListBlock("답변 준비 문장", plan.answerLines),
+    copyListBlock("발표 순서", plan.presentationOrder, { numbered: true }),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function formatPortfolioForCopy(project) {
+  const draft = project.portfolioDraft || emptyPortfolioDraft();
+  return [
+    copyBlock("초기 문제의식", draft.problem),
+    copyBlock("주요 피드백", draft.feedback),
+    copyBlock("설계 변경 방향", draft.change),
+    copyBlock("최종 설계 논리", draft.logic),
+    copyBlock("포트폴리오 설명문", draft.description),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function formatTasksForCopy(project) {
+  return TASK_STATUSES.map((status) => {
+    const tasks = project.tasks.filter((task) => task.status === status);
+    const lines = tasks.length
+      ? tasks.flatMap((task) => [
+          `- ${task.title} / ${task.outputType || "산출물 미정"} / ${PRIORITY_LABELS[task.priority] || "보통"}`,
+          `  설명: ${task.detail || task.reason || "설명 없음"}`,
+        ])
+      : ["- 없음"];
+    return [`[${STATUS_LABELS[status]}]`, ...lines].join("\n");
+  })
+    .join("\n\n")
+    .trim();
+}
+
+function exportProjectAsMarkdown() {
+  const project = getActiveProject();
+  if (!project) {
+    showToast("내보낼 프로젝트가 없습니다.");
+    return;
+  }
+  const filename = markdownReportFilename(project);
+  const content = formatProjectAsMarkdown(project);
+  downloadTextFile(filename, content, "text/markdown;charset=utf-8");
+  showToast("Markdown 리포트를 저장했습니다.");
+}
+
+function formatProjectAsMarkdown(project) {
+  return [
+    `# ${markdownValue(project.title || "studio-critic-ai report")}`,
+    "",
+    "## 프로젝트 정보",
+    "",
+    `- 설계 주제: ${markdownValue(project.topic)}`,
+    `- 대지 / 위치: ${markdownValue(project.site)}`,
+    `- 핵심 컨셉: ${markdownValue(project.concept)}`,
+    `- 현재 단계: ${markdownValue(project.stage)}`,
+    `- 다음 크리틱 / 마감일: ${markdownValue(project.deadline)}`,
+    `- 메모: ${markdownValue(project.notes)}`,
+    "",
+    "---",
+    "",
+    "## 피드백 요약",
+    "",
+    formatFeedbacksForMarkdown(project.feedbacks),
+    "",
+    "---",
+    "",
+    "## 작업 리스트",
+    "",
+    formatTasksForMarkdown(project.tasks),
+    "",
+    "---",
+    "",
+    "## 다음 크리틱 준비",
+    "",
+    formatCriticPlanForMarkdown(project.criticPlan),
+    "",
+    "---",
+    "",
+    "## 포트폴리오 서사",
+    "",
+    formatPortfolioForMarkdown(project.portfolioDraft),
+    "",
+  ].join("\n");
+}
+
+function formatFeedbacksForMarkdown(feedbacks) {
+  if (!feedbacks.length) return "아직 생성된 내용이 없습니다.";
+  return feedbacks
+    .map((feedback, index) => {
+      const analysis = feedback.analysis || emptyAnalysis();
+      const diagnosis = analysis.designDiagnosis || analysis.designIssue;
+      return [
+        `### ${index + 1}. ${markdownValue(feedback.date)} / ${markdownValue(feedback.source)} / ${markdownValue(PRIORITY_LABELS[feedback.importance] || "보통")}`,
+        "",
+        "원문:",
+        markdownValue(feedback.rawText),
+        "",
+        "AI 요약:",
+        markdownValue(analysis.summary),
+        "",
+        "설계 진단:",
+        markdownValue(diagnosis),
+        "",
+        "왜 중요한가:",
+        markdownValue(analysis.whyItMatters),
+        "",
+        "검토 기준:",
+        markdownList(analysis.reviewCriteria),
+        "",
+        "도면 작업:",
+        markdownList(analysis.drawingTasks),
+        "",
+        "다이어그램 작업:",
+        markdownList(analysis.diagramTasks),
+        "",
+        "예상 질문:",
+        markdownList(analysis.riskQuestions),
+        "",
+        "발표 문장:",
+        markdownList(analysis.presentationLines),
+      ].join("\n");
+    })
+    .join("\n\n");
+}
+
+function formatTasksForMarkdown(tasks) {
+  if (!tasks.length) return "아직 생성된 내용이 없습니다.";
+  return TASK_STATUSES.map((status) => {
+    const grouped = tasks.filter((task) => task.status === status);
+    const lines = grouped.length
+      ? grouped.flatMap((task) => [
+          `- ${markdownValue(task.title)}`,
+          `  - 산출물: ${markdownValue(task.outputType)}`,
+          `  - 우선순위: ${markdownValue(PRIORITY_LABELS[task.priority] || "보통")}`,
+          `  - 설명: ${markdownValue(task.detail || task.reason)}`,
+        ])
+      : ["아직 생성된 내용이 없습니다."];
+    return [`### ${STATUS_LABELS[status]}`, ...lines].join("\n");
+  }).join("\n\n");
+}
+
+function formatCriticPlanForMarkdown(plan = emptyCriticPlan()) {
+  return [
+    "### 이번 주 반드시 수정할 것",
+    markdownList(plan.mustFix),
+    "",
+    "### 다음 크리틱 때 보여줄 자료",
+    markdownList(plan.reviewMaterials),
+    "",
+    "### 예상 질문",
+    markdownList(plan.riskQuestions),
+    "",
+    "### 답변 준비 문장",
+    markdownList(plan.answerLines),
+    "",
+    "### 발표 순서",
+    markdownList(plan.presentationOrder, { numbered: true }),
+  ].join("\n");
+}
+
+function formatPortfolioForMarkdown(draft = emptyPortfolioDraft()) {
+  return [
+    "### 초기 문제의식",
+    markdownValue(draft.problem),
+    "",
+    "### 주요 피드백",
+    markdownValue(draft.feedback),
+    "",
+    "### 설계 변경 방향",
+    markdownValue(draft.change),
+    "",
+    "### 최종 설계 논리",
+    markdownValue(draft.logic),
+    "",
+    "### 포트폴리오 설명문",
+    markdownValue(draft.description),
+  ].join("\n");
+}
+
+function markdownReportFilename(project) {
+  const title = String(project?.title || "").trim();
+  if (!title) return "studio-critic-ai-report.md";
+  const slug = title
+    .normalize("NFKC")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+  return slug ? `studio-critic-ai_${slug}_${today()}.md` : "studio-critic-ai-report.md";
+}
+
+function markdownValue(value) {
+  const text = String(value || "").trim();
+  return text || "아직 생성된 내용이 없습니다.";
+}
+
+function markdownList(items, options = {}) {
+  const list = toStringArray(items);
+  if (!list.length) return "아직 생성된 내용이 없습니다.";
+  return list.map((item, index) => (options.numbered ? `${index + 1}. ${item}` : `- ${item}`)).join("\n");
+}
+
+function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function copyBlock(title, value) {
+  return `[${title}]\n${stringOr(value, "없음")}`;
+}
+
+function copyListBlock(title, items, options = {}) {
+  const list = toStringArray(items);
+  const lines = list.length
+    ? list.map((item, index) => (options.numbered ? `${index + 1}. ${item}` : `- ${item}`))
+    : ["- 없음"];
+  return [`[${title}]`, ...lines].join("\n");
 }
 
 function uid(prefix) {
@@ -715,13 +1289,52 @@ function renderAll() {
   ensureSelection();
   renderAiMode();
   renderAiDiagnostics();
+  renderCurrentView();
   renderProjectList();
   renderProjectForm();
+  renderHomeView();
   renderFeedbackTimeline();
   renderAnalysisCard();
   renderTaskList();
   renderOutputPanel();
   renderInputLength();
+}
+
+function handleViewNavClick(event) {
+  const button = event.target.closest("[data-view]");
+  if (!button) return;
+  setView(button.dataset.view || "home");
+}
+
+function setView(view, options = {}) {
+  const allowed = new Set(["home", "feedback", "analysis", "tasks", "critic", "portfolio", "settings"]);
+  const nextView = allowed.has(view) ? view : "home";
+  if (options.updateHash !== false) {
+    navigateTo(APP_VIEW_HASHES[nextView] || APP_VIEW_HASHES.home);
+    return;
+  }
+  currentView = nextView;
+  renderAll();
+}
+
+function renderCurrentView() {
+  mountSharedFeedbackCard();
+  els.viewButtons.forEach((button) => {
+    const active = button.dataset.view === currentView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+  els.viewPanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.viewPanel === currentView);
+  });
+}
+
+function mountSharedFeedbackCard() {
+  if (!els.feedbackInputCard || !els.homeFeedbackSlot || !els.feedbackInputSlot) return;
+  const targetSlot = currentView === "feedback" ? els.feedbackInputSlot : els.homeFeedbackSlot;
+  if (els.feedbackInputCard.parentElement !== targetSlot) {
+    targetSlot.appendChild(els.feedbackInputCard);
+  }
 }
 
 function renderAiMode() {
@@ -734,7 +1347,7 @@ function renderAiMode() {
   if (lastAiFallbackReason) {
     els.aiModePill.textContent = aiClient.available
       ? "Gemini 재시도 가능 · 최근 Mock 대체"
-      : "Mock 모드 · 설정/SDK 확인 필요";
+      : aiUnavailableLabel(aiClient.message);
     els.aiModePill.className = "status-pill warn";
     els.aiModePill.title = lastAiFallbackReason;
     return;
@@ -745,6 +1358,9 @@ function renderAiMode() {
 }
 
 function aiUnavailableLabel(message) {
+  if (aiDiagnostics.lastErrorCode === "CONFIG_FILE_LOAD_FAILED") {
+    return "Demo Mode · Firebase 없이 로컬 체험 중";
+  }
   if (/설정값|예시값/.test(message)) return "Mock 모드 · 설정값 확인 필요";
   if (/초기화 실패|SDK|네트워크|설정 파일/.test(message)) return "Mock 모드 · 설정/SDK 확인 필요";
   return "Mock 모드 · Firebase 미연결";
@@ -760,7 +1376,9 @@ function renderAiDiagnostics() {
   const modeLabel = aiClient?.available
     ? "Gemini 연결 준비됨"
     : aiClient
-      ? "Mock fallback"
+      ? aiDiagnostics.lastErrorCode === "CONFIG_FILE_LOAD_FAILED"
+        ? "Demo Mode"
+        : "Mock fallback"
       : "확인 중";
   const rows = [
     ["config 파일", statusText(aiDiagnostics.configFileStatus)],
@@ -872,6 +1490,101 @@ function renderProjectForm() {
   $("projectNotes").value = project.notes;
 }
 
+function renderHomeView() {
+  const project = getActiveProject();
+  if (!els.homeProjectSummary || !els.homeRecentAnalysis || !els.homeTaskPreview) return;
+  if (!project) {
+    els.homeProjectSummary.innerHTML = renderEmptyState(
+      "folder",
+      "새 스튜디오 프로젝트를 시작하세요",
+      "프로젝트를 만들고 크리틱 피드백을 누적해보세요.",
+    );
+    els.homeRecentAnalysis.innerHTML = renderEmptyState(
+      "spark",
+      "아직 분석 결과가 없습니다",
+      "피드백을 저장하면 최근 AI 설계 진단이 여기에 표시됩니다.",
+    );
+    els.homeTaskPreview.innerHTML = renderEmptyState(
+      "checklist",
+      "아직 작업 카드가 없습니다",
+      "분석 결과에서 생성된 작업이 오늘 할 일로 정리됩니다.",
+    );
+    return;
+  }
+
+  const feedbackCount = project.feedbacks.length;
+  const openTasks = project.tasks.filter((task) => task.status !== "done");
+  const doneTasks = project.tasks.filter((task) => task.status === "done");
+  els.homeProjectSummary.innerHTML = `
+    <div class="summary-title">${escapeHtml(project.title)}</div>
+    <dl class="summary-grid">
+      <div><dt>단계</dt><dd>${escapeHtml(project.stage || "미입력")}</dd></div>
+      <div><dt>마감일</dt><dd>${escapeHtml(project.deadline || "미입력")}</dd></div>
+      <div><dt>피드백</dt><dd>${feedbackCount}개</dd></div>
+      <div><dt>열린 작업</dt><dd>${openTasks.length}개</dd></div>
+    </dl>
+    <p>${escapeHtml(project.concept || project.topic || "프로젝트 브리프를 Settings에서 정리해두면 분석 품질이 좋아집니다.")}</p>
+  `;
+
+  const feedback = latestAnalyzedFeedback(project) || project.feedbacks[0];
+  if (!feedback) {
+    els.homeRecentAnalysis.innerHTML = renderEmptyState(
+      "spark",
+      "아직 분석 결과가 없습니다",
+      "빠른 피드백 입력에서 크리틱 내용을 저장하고 분석해보세요.",
+    );
+  } else {
+    const analysis = feedback.analysis;
+    const diagnosis = analysis?.designDiagnosis || analysis?.designIssue;
+    els.homeRecentAnalysis.innerHTML = `
+      <div class="timeline-meta">
+        <span class="date">${escapeHtml(feedback.date)}</span>
+        <span class="source">${escapeHtml(feedback.source)}</span>
+        <span class="importance ${escapeAttr(feedback.importance)}">${escapeHtml(PRIORITY_LABELS[feedback.importance] || "보통")}</span>
+      </div>
+      <h3>${escapeHtml(diagnosis || analysis?.summary || "아직 분석되지 않은 피드백입니다.")}</h3>
+      <p>${escapeHtml(analysis?.whyItMatters || feedback.rawText || "Analysis 화면에서 선택 피드백을 재분석할 수 있습니다.")}</p>
+    `;
+  }
+
+  const todayTasks = openTasks
+    .sort((a, b) => priorityWeight(a.priority) - priorityWeight(b.priority))
+    .slice(0, 5);
+  if (todayTasks.length === 0) {
+    els.homeTaskPreview.innerHTML = renderEmptyState(
+      doneTasks.length ? "checklist" : "spark",
+      doneTasks.length ? "열린 작업이 없습니다" : "아직 작업 카드가 없습니다",
+      doneTasks.length ? "완료된 작업은 Tasks 화면에서 확인할 수 있습니다." : "피드백을 분석하면 도면, 다이어그램, 발표 작업이 생성됩니다.",
+    );
+    return;
+  }
+  els.homeTaskPreview.innerHTML = `
+    <div class="home-task-list">
+      ${todayTasks
+        .map(
+          (task) => `
+            <article class="home-task-item">
+              <span class="task-check" aria-hidden="true"></span>
+              <div>
+                <strong>${escapeHtml(task.title)}</strong>
+                <span>${escapeHtml(task.outputType || task.category || "작업")} · ${escapeHtml(PRIORITY_LABELS[task.priority] || "보통")}</span>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function latestAnalyzedFeedback(project) {
+  return [...project.feedbacks].reverse().find((feedback) => feedback.analysis) || null;
+}
+
+function priorityWeight(priority) {
+  return { high: 0, normal: 1, low: 2 }[priority] ?? 1;
+}
+
 function setProjectFormDisabled(disabled) {
   [
     "projectTitle",
@@ -944,7 +1657,7 @@ function renderFeedbackTimeline() {
 function renderAnalysisCard() {
   const feedback = selectedFeedback();
   if (!feedback) {
-    els.analysisCard.className = "analysis-card empty";
+    els.analysisCard.className = "analysis-card empty panel-scroll";
     els.analysisCard.innerHTML = renderEmptyState(
       "spark",
       "분석할 피드백을 선택하세요",
@@ -965,7 +1678,7 @@ function renderAnalysisCard() {
   `;
 
   if (!feedback.analysis) {
-    els.analysisCard.className = "analysis-card";
+    els.analysisCard.className = "analysis-card panel-scroll";
     els.analysisCard.innerHTML = `
       <div class="analysis-toolbar">
         <button data-analysis-action="reanalyze" type="button">재분석</button>
@@ -986,7 +1699,7 @@ function renderAnalysisCard() {
 
   const analysis = feedback.analysis;
   const diagnosis = analysis.designDiagnosis || analysis.designIssue;
-  els.analysisCard.className = "analysis-card";
+  els.analysisCard.className = "analysis-card panel-scroll";
   els.analysisCard.innerHTML = `
     <div class="analysis-toolbar">
       <button data-analysis-action="reanalyze" type="button">재분석</button>
@@ -1054,68 +1767,110 @@ function renderTaskList() {
     return;
   }
 
+  if (currentView === "tasks") {
+    els.taskList.innerHTML = `
+      <div class="kanban-board">
+        ${TASK_STATUSES.map((status) => {
+          const tasks = project.tasks.filter((task) => task.status === status);
+          return `
+            <section class="kanban-column">
+              <header>
+                <strong>${escapeHtml(STATUS_LABELS[status])}</strong>
+                <span>${tasks.length}</span>
+              </header>
+              <div class="kanban-items">
+                ${
+                  tasks.length
+                    ? tasks.map(renderTaskCard).join("")
+                    : `<p class="list-empty">이 상태의 작업이 없습니다.</p>`
+                }
+              </div>
+            </section>
+          `;
+        }).join("")}
+      </div>
+    `;
+    return;
+  }
+
   els.taskList.innerHTML = project.tasks
-    .map(
-      (task) => `
-        <article class="task-card status-${escapeAttr(task.status)}">
-          <div class="task-top">
-            <div class="task-title-row">
-              <span class="task-check" aria-hidden="true"></span>
-              <strong>${escapeHtml(task.title)}</strong>
-            </div>
-            <div class="task-actions">
-              <button class="status-cycle ${escapeAttr(task.status)}" data-task-id="${escapeAttr(task.id)}" data-task-action="status" type="button">
-                ${escapeHtml(STATUS_LABELS[task.status] || "해야 함")}
-              </button>
-              <button class="danger" data-task-id="${escapeAttr(task.id)}" data-task-action="delete" type="button">삭제</button>
-            </div>
-          </div>
-          <div class="tags">
-            <span class="tag priority-${escapeAttr(task.priority)}">${escapeHtml(PRIORITY_LABELS[task.priority] || "보통")}</span>
-            <span class="tag">${escapeHtml(task.category || "기타")}</span>
-            ${task.outputType ? `<span class="tag">${escapeHtml(task.outputType)}</span>` : ""}
-          </div>
-          ${task.reason ? `<p>${escapeHtml(task.reason)}</p>` : ""}
-          ${task.detail ? `<p class="task-detail">${escapeHtml(task.detail)}</p>` : ""}
-        </article>
-      `,
-    )
+    .map(renderTaskCard)
     .join("");
+}
+
+function renderTaskCard(task) {
+  return `
+    <article class="task-card status-${escapeAttr(task.status)}">
+      <div class="task-top">
+        <div class="task-title-row">
+          <span class="task-check" aria-hidden="true"></span>
+          <strong>${escapeHtml(task.title)}</strong>
+        </div>
+        <div class="task-actions">
+          <button class="status-cycle ${escapeAttr(task.status)}" data-task-id="${escapeAttr(task.id)}" data-task-action="status" type="button">
+            ${escapeHtml(STATUS_LABELS[task.status] || "해야 함")}
+          </button>
+          <button class="danger" data-task-id="${escapeAttr(task.id)}" data-task-action="delete" type="button">삭제</button>
+        </div>
+      </div>
+      <div class="tags">
+        <span class="tag priority-${escapeAttr(task.priority)}">${escapeHtml(PRIORITY_LABELS[task.priority] || "보통")}</span>
+        <span class="tag">${escapeHtml(task.category || "기타")}</span>
+        ${task.outputType ? `<span class="tag">${escapeHtml(task.outputType)}</span>` : ""}
+      </div>
+      ${task.reason ? `<p>${escapeHtml(task.reason)}</p>` : ""}
+      ${task.detail ? `<p class="task-detail">${escapeHtml(task.detail)}</p>` : ""}
+    </article>
+  `;
 }
 
 function renderOutputPanel() {
   const project = getActiveProject();
   if (!project) {
-    els.outputPanel.className = "output-panel empty";
+    els.outputPanel.className = "output-panel empty panel-scroll";
     els.outputPanel.innerHTML = renderEmptyState(
       "board",
       "프로젝트가 없습니다",
       "새 프로젝트를 만들거나 샘플을 복원하면 다음 크리틱 준비안을 생성할 수 있습니다.",
     );
+    if (els.portfolioPanel) {
+      els.portfolioPanel.className = "output-panel empty panel-scroll";
+      els.portfolioPanel.innerHTML = renderEmptyState(
+        "doc",
+        "프로젝트가 없습니다",
+        "새 프로젝트를 만들거나 샘플을 복원하면 포트폴리오 문장을 생성할 수 있습니다.",
+      );
+    }
     return;
   }
-  if (outputView === "portfolio" && hasPortfolio(project.portfolioDraft)) {
-    renderPortfolioPanel(project.portfolioDraft);
-    return;
-  }
+
   if (hasCriticPlan(project.criticPlan)) {
     renderCriticPanel(project.criticPlan);
-    return;
+  } else {
+    els.outputPanel.className = "output-panel empty panel-scroll";
+    els.outputPanel.innerHTML = renderEmptyState(
+      "board",
+      "다음 크리틱 준비안이 아직 없습니다",
+      "피드백과 작업 카드가 쌓이면 다음 크리틱 준비안을 생성할 수 있습니다.",
+    );
   }
+
   if (hasPortfolio(project.portfolioDraft)) {
     renderPortfolioPanel(project.portfolioDraft);
     return;
   }
-  els.outputPanel.className = "output-panel empty";
-  els.outputPanel.innerHTML = renderEmptyState(
-    "board",
-    "다음 출력물이 아직 없습니다",
-    "피드백과 작업 카드가 쌓이면 다음 크리틱 준비안이나 포트폴리오 문장을 생성할 수 있습니다.",
-  );
+  if (els.portfolioPanel) {
+    els.portfolioPanel.className = "output-panel empty panel-scroll";
+    els.portfolioPanel.innerHTML = renderEmptyState(
+      "doc",
+      "포트폴리오 문장이 아직 없습니다",
+      "피드백과 완료 작업이 쌓이면 포트폴리오 설명문을 생성할 수 있습니다.",
+    );
+  }
 }
 
 function renderCriticPanel(plan) {
-  els.outputPanel.className = "output-panel";
+  els.outputPanel.className = "output-panel panel-scroll";
   els.outputPanel.innerHTML = `
     <div class="output-head">
       <span class="card-icon icon-board" aria-hidden="true"></span>
@@ -1138,8 +1893,9 @@ function renderCriticPanel(plan) {
 }
 
 function renderPortfolioPanel(draft) {
-  els.outputPanel.className = "output-panel";
-  els.outputPanel.innerHTML = `
+  const target = els.portfolioPanel || els.outputPanel;
+  target.className = "output-panel panel-scroll";
+  target.innerHTML = `
     <div class="output-head">
       <span class="card-icon icon-doc" aria-hidden="true"></span>
       <div>
@@ -1425,6 +2181,7 @@ function deleteTask(taskId) {
 async function handleCriticPrep() {
   const project = getActiveProject();
   if (!project || project.feedbacks.length === 0) {
+    setView("critic");
     showOutputNotice("다음 크리틱 준비안을 만들려면 먼저 피드백을 하나 이상 저장하고 분석해야 합니다.");
     showToast("다음 크리틱 준비를 만들 피드백이 없습니다.");
     return;
@@ -1443,6 +2200,7 @@ async function handleCriticPrep() {
     project.criticPlan = plan;
     project.updatedAt = nowIso();
     outputView = "critic";
+    currentView = "critic";
     saveState();
     renderAll();
     showToast(
@@ -1458,7 +2216,8 @@ async function handleCriticPrep() {
 async function handlePortfolioDraft() {
   const project = getActiveProject();
   if (!project || project.feedbacks.length === 0) {
-    showOutputNotice("포트폴리오 서사를 만들려면 누적 피드백이나 완료된 작업 카드가 필요합니다.");
+    setView("portfolio");
+    showOutputNotice("포트폴리오 서사를 만들려면 누적 피드백이나 완료된 작업 카드가 필요합니다.", "portfolio");
     showToast("포트폴리오 서사를 만들 피드백이 없습니다.");
     return;
   }
@@ -1476,6 +2235,7 @@ async function handlePortfolioDraft() {
     project.portfolioDraft = draft;
     project.updatedAt = nowIso();
     outputView = "portfolio";
+    currentView = "portfolio";
     saveState();
     renderAll();
     showToast(
@@ -1547,6 +2307,13 @@ function recordAiFallback(context, error) {
 }
 
 function aiFallbackToast(actionLabel, fallbackLabel) {
+  if (aiDiagnostics.lastErrorCode === "CONFIG_FILE_LOAD_FAILED") {
+    const demoLabel = fallbackLabel
+      .replace("Mock 분석으로 작업 카드를 생성했습니다.", "Mock 분석과 작업 카드를 생성했습니다.")
+      .replace("Mock 준비안으로 대체했습니다.", "Mock 준비안을 생성했습니다.")
+      .replace("Mock 서사로 대체했습니다.", "Mock 서사를 생성했습니다.");
+    return `${actionLabel}: Demo Mode에서 ${demoLabel}`;
+  }
   const code = aiDiagnostics.lastErrorCode && aiDiagnostics.lastErrorCode !== "-"
     ? ` (${aiDiagnostics.lastErrorCode})`
     : "";
@@ -2046,7 +2813,8 @@ function clearFeedbackForm() {
   renderInputLength();
 }
 
-function createNewProject() {
+function createNewProject(options = {}) {
+  const silent = options?.silent === true;
   const project = createProject({
     title: `새 건축 프로젝트 ${state.projects.length + 1}`,
   });
@@ -2056,7 +2824,9 @@ function createNewProject() {
   outputView = "critic";
   saveState();
   renderAll();
-  showToast("새 프로젝트를 만들었습니다.");
+  if (!silent) {
+    showToast("새 프로젝트를 만들었습니다.");
+  }
 }
 
 function deleteActiveProject() {
@@ -2081,17 +2851,11 @@ function deleteActiveProject() {
 }
 
 function exportData() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], {
-    type: "application/json;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `studio-critic-ai-backup-${today()}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadTextFile(
+    `studio-critic-ai-backup-${today()}.json`,
+    JSON.stringify(state, null, 2),
+    "application/json;charset=utf-8",
+  );
   showToast("JSON 백업 파일을 내보냈습니다.");
 }
 
@@ -2164,9 +2928,10 @@ function showToast(message) {
   }, 2600);
 }
 
-function showOutputNotice(message) {
-  els.outputPanel.className = "output-panel empty";
-  els.outputPanel.innerHTML = renderEmptyState("board", "생성할 피드백이 필요합니다", message);
+function showOutputNotice(message, target = "critic") {
+  const panel = target === "portfolio" && els.portfolioPanel ? els.portfolioPanel : els.outputPanel;
+  panel.className = "output-panel empty panel-scroll";
+  panel.innerHTML = renderEmptyState(target === "portfolio" ? "doc" : "board", "생성할 피드백이 필요합니다", message);
 }
 
 function truncate(value, limit) {

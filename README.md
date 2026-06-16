@@ -15,6 +15,9 @@
 
 ## 핵심 기능
 
+- SaaS형 Landing Page
+- 시작 방식 선택: 데모 프로젝트, 새 프로젝트, JSON 백업 불러오기
+- GitHub Pages에 안전한 hash routing
 - 프로젝트 생성 및 편집
 - 프로젝트 삭제
 - 교수 / 튜터 / 본인 / 클라이언트 / 기타 피드백 입력
@@ -35,11 +38,29 @@
 
 현재 기본 상태는 Mock 모드입니다.
 
-실제 Firebase/Gemini 연결 전에도 모든 UI 흐름을 테스트할 수 있습니다.
+GitHub Pages 같은 공개 정적 배포에서는 `src/firebaseConfig.js`를 올리지 않는 것이 기본이며, 이 경우 앱은 `Demo Mode`로 동작합니다. 실제 Firebase/Gemini 연결 전에도 Landing Page, 시작 방식 선택, View 전환, 피드백 입력, Mock 분석, 작업 카드 생성, JSON 백업/불러오기 흐름을 테스트할 수 있습니다.
 
 실제 Gemini 호출을 사용하려면 `src/firebaseConfig.example.js`를 `src/firebaseConfig.js`로 복사한 뒤 Firebase 설정값을 입력해야 합니다.
 
 `src/firebaseConfig.js`는 `.gitignore`에 포함되어 있으므로 GitHub에 올리지 않습니다.
+
+## 화면 구조와 hash routing
+
+앱은 하나의 `index.html` 안에서 화면을 전환하는 정적 SPA입니다.
+
+- `#/landing`: 방문자용 Landing Page
+- `#/start`: 시작 방식 선택 화면
+- `#/app/home`: Home
+- `#/app/feedback`: Feedback
+- `#/app/analysis`: Analysis
+- `#/app/tasks`: Tasks
+- `#/app/critic-prep`: Critic Prep
+- `#/app/portfolio`: Portfolio
+- `#/app/settings`: Settings
+
+GitHub Pages에서 URL path routing을 쓰면 새로고침 시 404가 날 수 있으므로, 이 프로젝트는 hash route를 사용합니다. 사이드바 메뉴와 시작 버튼은 hash를 변경하고, 브라우저 뒤로가기/앞으로가기도 같은 라우팅 흐름을 따릅니다.
+
+첫 접속 시 `studioCriticEntered` 값이 없으면 `#/landing`으로 열립니다. 이미 앱에 진입한 브라우저에서는 기본값이 `#/app/home`입니다. 단, 주소창에 hash가 직접 들어 있으면 그 hash가 우선됩니다.
 
 ## 무료 운영 구조
 
@@ -118,15 +139,18 @@ export const firebaseConfig = {
 현재 데이터는 서버 DB가 아니라 브라우저 `localStorage`에 저장됩니다.
 
 - 같은 컴퓨터라도 브라우저를 바꾸면 데이터가 보이지 않을 수 있습니다.
+- 다른 기기와 자동 동기화되지 않습니다.
 - 브라우저 캐시나 사이트 데이터를 삭제하면 기록이 사라질 수 있습니다.
-- 중요한 작업 기록은 상단의 `내보내기`로 JSON 백업을 저장하세요.
-- 백업 파일은 `불러오기`로 다시 복원할 수 있습니다.
+- 중요한 작업 기록은 Settings의 `JSON 백업`으로 저장하세요.
+- 백업 파일은 Settings의 `백업 불러오기`로 다시 복원할 수 있습니다.
 
 ## JSON 백업 방법
 
-상단의 `JSON 내보내기` 버튼을 누르면 현재 프로젝트, 피드백, 분석 결과, 작업 카드가 하나의 JSON 파일로 저장됩니다.
+Settings View의 `JSON 백업` 버튼을 누르면 현재 프로젝트, 피드백, 분석 결과, 작업 카드가 하나의 JSON 파일로 저장됩니다.
 
-복원할 때는 `JSON 불러오기`를 누르고 이전에 내보낸 백업 파일을 선택합니다. 다른 앱에서 만든 JSON이나 구조가 깨진 파일은 불러올 수 없습니다.
+복원할 때는 `백업 불러오기`를 누르고 이전에 내보낸 백업 파일을 선택합니다. 다른 앱에서 만든 JSON이나 구조가 깨진 파일은 불러올 수 없습니다.
+
+Landing Page의 시작 방식 선택에서 `백업 불러오기`를 고르면 앱이 Settings View로 이동하고 백업 영역을 강조합니다.
 
 ## GitHub에 올릴 핵심 파일
 
@@ -190,6 +214,22 @@ Windows에서 `python` 또는 `python3` 명령이 인식되지 않으면 Python�
 
 공개 저장소에 올리기 전 `src/firebaseConfig.js`, `.env`, `.env.*`, 실제 API 키가 포함된 파일이 커밋 대상에 들어가지 않았는지 확인하세요.
 
+GitHub Pages에서는 다음 hash URL을 직접 열거나 새로고침해도 `index.html` 안에서 안전하게 처리됩니다.
+
+```text
+#/landing
+#/start
+#/app/home
+#/app/feedback
+#/app/analysis
+#/app/tasks
+#/app/critic-prep
+#/app/portfolio
+#/app/settings
+```
+
+공개 데모 배포에서는 `src/firebaseConfig.js`를 올리지 않아도 됩니다. 이 경우 상단 상태는 `Demo Mode · Firebase 없이 로컬 체험 중`으로 표시되고, 분석은 Mock 결과로 생성됩니다.
+
 ### Firebase Hosting
 
 Firebase Hosting을 쓰는 경우에도 정적 파일만 배포합니다.
@@ -214,6 +254,8 @@ firebase deploy --only hosting
 
 ```bash
 node --check src/app.js
+git diff --check
+git check-ignore -v src/firebaseConfig.js firebaseConfig.js .env .env.local
 python -m http.server 4173
 ```
 
@@ -221,4 +263,12 @@ python -m http.server 4173
 
 ```text
 http://localhost:4173
+```
+
+라우팅 확인 예:
+
+```text
+http://localhost:4173/#/landing
+http://localhost:4173/#/start
+http://localhost:4173/#/app/tasks
 ```
