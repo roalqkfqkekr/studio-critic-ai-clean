@@ -156,6 +156,75 @@
           </p>
         </article>
       </section>
+
+      <section
+        class="start-choice-shell is-hidden"
+        id="templateChoicePanel"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="templateChoiceTitle"
+      >
+        <div class="start-choice-backdrop" data-template-back></div>
+        <article class="start-choice-card template-choice-card" aria-describedby="templateChoiceDescription">
+          <button class="tertiary start-choice-close" data-template-back type="button" aria-label="템플릿 선택 닫기">×</button>
+          <div class="start-choice-copy">
+            <p class="landing-kicker">Project Template</p>
+            <h2 id="templateChoiceTitle">어떤 프로젝트로 시작할까요?</h2>
+            <p id="templateChoiceDescription">
+              유형을 고르면 프로젝트 브리프의 기본값만 채워집니다. 피드백과 작업 데이터 구조는 그대로 유지됩니다.
+            </p>
+          </div>
+          <div class="template-choice-grid">
+            <button class="template-option-card" data-template-id="graduation" type="button">
+              <strong>졸업설계</strong>
+              <span>장기간 진행되는 개인 설계 프로젝트의 크리틱을 누적 관리합니다.</span>
+              <em>추천: 학기 전체 피드백과 최종 발표 준비</em>
+              <span class="template-tags"><b>중간 크리틱</b><b>최종 발표</b><b>포트폴리오</b></span>
+            </button>
+            <button class="template-option-card" data-template-id="competition" type="button">
+              <strong>공모전</strong>
+              <span>심사 기준과 제출 마감에 맞춰 피드백을 작업 카드로 정리합니다.</span>
+              <em>추천: 짧은 기간 안에 패널과 콘셉트 정리</em>
+              <span class="template-tags"><b>마감</b><b>패널</b><b>콘셉트</b></span>
+            </button>
+            <button class="template-option-card" data-template-id="studio" type="button">
+              <strong>스튜디오 크리틱</strong>
+              <span>매주 받은 교수 피드백을 다음 수업 전 작업으로 바꿉니다.</span>
+              <em>추천: 반복되는 수업 크리틱과 주간 작업 관리</em>
+              <span class="template-tags"><b>주간 작업</b><b>도면</b><b>발표</b></span>
+            </button>
+            <button class="template-option-card" data-template-id="portfolio" type="button">
+              <strong>포트폴리오 정리</strong>
+              <span>완료된 프로젝트의 피드백과 수정 과정을 포트폴리오 문장으로 정리합니다.</span>
+              <em>추천: 작업 과정을 설명하는 문장과 리포트 만들기</em>
+              <span class="template-tags"><b>서사</b><b>정리</b><b>문장</b></span>
+            </button>
+            <button class="template-option-card" data-template-id="renovation" type="button">
+              <strong>리노베이션 프로젝트</strong>
+              <span>기존 공간의 문제점, 개선 방향, 사례 분석 피드백을 정리합니다.</span>
+              <em>추천: 현황 분석과 공간 개선안 비교</em>
+              <span class="template-tags"><b>현황 분석</b><b>공간 개선</b><b>사례</b></span>
+            </button>
+            <button class="template-option-card" data-template-id="urban-infra" type="button">
+              <strong>도시/인프라 프로젝트</strong>
+              <span>도시 맥락, 동선, 시스템, 공공성 관련 피드백을 구조화합니다.</span>
+              <em>추천: 큰 스케일의 시스템과 공공성 논리 정리</em>
+              <span class="template-tags"><b>도시 맥락</b><b>시스템</b><b>인프라</b></span>
+            </button>
+            <button class="template-option-card" data-template-id="blank" type="button">
+              <strong>빈 프로젝트</strong>
+              <span>템플릿 없이 직접 입력해서 시작합니다.</span>
+              <em>추천: 자유로운 주제나 아직 정리 전인 프로젝트</em>
+              <span class="template-tags"><b>자유 입력</b></span>
+            </button>
+          </div>
+          <div class="template-choice-footer">
+            <button class="secondary" data-template-back type="button">이전으로</button>
+            <p class="start-choice-note">예시 피드백은 실제 데이터에 추가되지 않습니다. Home의 입력창에서 첫 크리틱 내용을 직접 붙여넣어 시작하세요.</p>
+          </div>
+        </article>
+      </section>
     </section>
 
     <div class="app-shell is-hidden" id="appShell">
@@ -248,7 +317,7 @@
                   </div>
                   <label>
                     관련 키워드
-                    <input id="feedbackKeywords" placeholder="예: 동선, 단면, CO2" />
+                    <input id="feedbackKeywords" placeholder="예: 동선, 단면, 소음" />
                   </label>
                   <label>
                     피드백 원문

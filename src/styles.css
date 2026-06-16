@@ -618,6 +618,94 @@ button.danger:hover {
   font-size: 0.86rem;
 }
 
+.template-choice-card {
+  width: min(1060px, 100%);
+}
+
+.template-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.template-option-card {
+  display: grid;
+  gap: 0.58rem;
+  align-content: start;
+  min-height: 210px;
+  padding: 1rem;
+  border-color: var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  text-align: left;
+  white-space: normal;
+}
+
+.template-option-card:hover,
+.template-option-card:focus-visible {
+  border-color: rgba(49, 94, 251, 0.42);
+  background: var(--primary-tint);
+  box-shadow: 0 10px 24px rgba(49, 94, 251, 0.1);
+}
+
+.template-option-card strong {
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.template-option-card span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.template-option-card em {
+  color: var(--ink-2);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
+.template-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: auto;
+}
+
+.template-tags b {
+  display: inline-flex;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--primary);
+  padding: 0.22rem 0.46rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.template-choice-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 0.95rem;
+}
+
+.template-choice-footer .start-choice-note {
+  flex: 1 1 360px;
+  border-top: 0;
+  padding-top: 0;
+}
+
 .start-highlight {
   border-color: rgba(49, 94, 251, 0.52) !important;
   box-shadow: 0 0 0 4px rgba(49, 94, 251, 0.1), var(--shadow-card) !important;
@@ -2793,7 +2881,8 @@ select {
 
   .landing-feature-grid,
   .landing-workflow-grid,
-  .start-choice-grid {
+  .start-choice-grid,
+  .template-choice-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2845,7 +2934,8 @@ select {
 
   .landing-feature-grid,
   .landing-workflow-grid,
-  .start-choice-grid {
+  .start-choice-grid,
+  .template-choice-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2866,6 +2956,15 @@ select {
 
   .start-option-card {
     min-height: 132px;
+  }
+
+  .template-option-card {
+    min-height: 0;
+  }
+
+  .template-choice-footer {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .preview-card {

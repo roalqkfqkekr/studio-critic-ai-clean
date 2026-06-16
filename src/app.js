@@ -7,6 +7,7 @@ const MAX_INPUT_CHARS = 4000;
 const AI_INIT_TIMEOUT_MS = 10000;
 const AI_GENERATE_TIMEOUT_MS = 45000;
 const CONFIG_URL = new URL("./src/firebaseConfig.js", window.location.href).href;
+const START_TEMPLATE_HASH = "#/start/template";
 
 const CATEGORIES = [
   "컨셉",
@@ -59,6 +60,92 @@ const HASH_VIEW_SEGMENTS = {
   portfolio: "portfolio",
   settings: "settings",
 };
+const PROJECT_TEMPLATES = [
+  {
+    id: "graduation",
+    name: "졸업설계",
+    feedbackPlaceholder: "예: 교수님이 “동선과 프로그램의 관계가 아직 약하다”고 했다면 그대로 붙여넣어 보세요.",
+    defaults: {
+      title: "새 졸업설계 프로젝트",
+      topic: "졸업설계 주제 입력",
+      site: "대지 / 위치 입력",
+      concept: "핵심 컨셉 입력",
+      stage: "졸업설계 크리틱 진행 중",
+      notes: "이번 학기 크리틱 피드백을 누적하고, 도면 작업·발표 문장·포트폴리오 서사로 정리합니다.",
+    },
+  },
+  {
+    id: "competition",
+    name: "공모전",
+    feedbackPlaceholder: "예: 심사 기준에 비해 콘셉트와 패널 표현이 약하다는 피드백을 붙여넣어 보세요.",
+    defaults: {
+      title: "새 공모전 프로젝트",
+      topic: "공모전 주제와 심사 기준 입력",
+      site: "대상지 / 공모 조건 입력",
+      concept: "핵심 콘셉트와 제출 전략 입력",
+      stage: "공모전 제출안 정리 단계",
+      notes: "마감, 패널, 콘셉트, 제출 도면을 중심으로 피드백을 작업 카드로 정리합니다.",
+    },
+  },
+  {
+    id: "studio",
+    name: "스튜디오 크리틱",
+    feedbackPlaceholder: "예: 이번 주 크리틱에서 받은 교수님 피드백을 그대로 기록해 보세요.",
+    defaults: {
+      title: "새 스튜디오 크리틱 프로젝트",
+      topic: "스튜디오 설계 주제 입력",
+      site: "대지 / 수업 조건 입력",
+      concept: "현재 설계 방향 입력",
+      stage: "주간 스튜디오 크리틱 진행 중",
+      notes: "매주 받은 피드백을 다음 수업 전 도면, 다이어그램, 발표 작업으로 전환합니다.",
+    },
+  },
+  {
+    id: "portfolio",
+    name: "포트폴리오 정리",
+    feedbackPlaceholder: "예: 포트폴리오에서 프로젝트 변화 과정이 잘 보이지 않는다는 피드백을 붙여넣어 보세요.",
+    defaults: {
+      title: "새 포트폴리오 정리 프로젝트",
+      topic: "정리할 프로젝트 주제 입력",
+      site: "프로젝트 위치 / 맥락 입력",
+      concept: "최종 설계 논리 입력",
+      stage: "포트폴리오 문장 및 리포트 정리 단계",
+      notes: "완료된 프로젝트의 피드백, 수정 과정, 최종 설계 논리를 포트폴리오 서사로 정리합니다.",
+    },
+  },
+  {
+    id: "renovation",
+    name: "리노베이션 프로젝트",
+    feedbackPlaceholder: "예: 기존 공간 분석과 개선 방향이 더 명확해야 한다는 피드백을 붙여넣어 보세요.",
+    defaults: {
+      title: "새 리노베이션 프로젝트",
+      topic: "기존 공간의 문제와 개선 방향 입력",
+      site: "기존 건물 / 위치 입력",
+      concept: "보존, 변형, 개입 전략 입력",
+      stage: "현황 분석 및 공간 개선안 검토 단계",
+      notes: "기존 공간의 문제점, 사례 분석, 공간 개선 방향을 중심으로 피드백을 정리합니다.",
+    },
+  },
+  {
+    id: "urban-infra",
+    name: "도시/인프라 프로젝트",
+    feedbackPlaceholder: "예: 도시 맥락, 동선, 시스템 흐름이 도면에서 약하다는 피드백을 붙여넣어 보세요.",
+    defaults: {
+      title: "새 도시/인프라 프로젝트",
+      topic: "도시 문제와 인프라 시스템을 다루는 설계",
+      site: "대지 / 도시 맥락 입력",
+      concept: "도시적 개입과 시스템 흐름 입력",
+      stage: "도시 맥락 및 시스템 검토 단계",
+      notes: "동선, 프로그램, 시스템, 공공성, 환경 전략을 중심으로 피드백을 정리합니다.",
+    },
+  },
+  {
+    id: "blank",
+    name: "빈 프로젝트",
+    feedbackPlaceholder: "예: 교수님이 “동선과 프로그램의 관계가 아직 약하다”고 했다면 그대로 붙여넣어 보세요.",
+    defaults: {},
+  },
+];
 
 const $ = (id) => document.getElementById(id);
 
@@ -66,8 +153,11 @@ const els = {
   landingShell: $("landingShell"),
   appShell: $("appShell"),
   startChoicePanel: $("startChoicePanel"),
+  templateChoicePanel: $("templateChoicePanel"),
   openStartButtons: Array.from(document.querySelectorAll("[data-open-start]")),
   startModeButtons: Array.from(document.querySelectorAll("[data-start-mode]")),
+  templateButtons: Array.from(document.querySelectorAll("[data-template-id]")),
+  templateBackTargets: Array.from(document.querySelectorAll("[data-template-back]")),
   closeStartChoiceBtn: $("closeStartChoiceBtn"),
   closeStartTargets: Array.from(document.querySelectorAll("[data-close-start]")),
   landingScrollLinks: Array.from(document.querySelectorAll("[data-scroll-target]")),
@@ -160,6 +250,12 @@ function bindEvents() {
   els.startModeButtons.forEach((button) => {
     button.addEventListener("click", () => startWithMode(button.dataset.startMode));
   });
+  els.templateButtons.forEach((button) => {
+    button.addEventListener("click", () => createProjectFromTemplate(button.dataset.templateId));
+  });
+  els.templateBackTargets.forEach((target) => {
+    target.addEventListener("click", () => navigateTo("#/start"));
+  });
   els.closeStartChoiceBtn?.addEventListener("click", closeStartChoice);
   els.closeStartTargets.forEach((target) => {
     target.addEventListener("click", closeStartChoice);
@@ -194,7 +290,7 @@ function bindEvents() {
   els.resetSampleBtn.addEventListener("click", resetSample);
   els.clearStorageBtn.addEventListener("click", clearStorage);
   els.returnLandingBtn?.addEventListener("click", returnToLanding);
-  els.newProjectBtn.addEventListener("click", createNewProject);
+  els.newProjectBtn.addEventListener("click", openProjectTemplateChoice);
   els.deleteProjectBtn.addEventListener("click", deleteActiveProject);
 }
 
@@ -211,6 +307,7 @@ function getRouteFromHash() {
   if (!hash) return { redirectTo: getDefaultHash() };
   if (hash === "#/landing") return { screen: "landing" };
   if (hash === "#/start") return { screen: "start" };
+  if (hash === START_TEMPLATE_HASH) return { screen: "template" };
 
   const appRoute = hash.match(/^#\/app\/([^/?#]+)/);
   if (appRoute) {
@@ -259,6 +356,11 @@ function applyRoute(route) {
     return;
   }
 
+  if (route.screen === "template") {
+    showLandingShell({ templateChoice: true });
+    return;
+  }
+
   localStorage.setItem(ENTRY_KEY, "true");
   showAppShell();
   setView(route.view, { updateHash: false });
@@ -269,6 +371,7 @@ function showLandingShell(options = {}) {
   els.appShell?.classList.add("is-hidden");
   els.appShell?.classList.remove("is-visible");
   setStartChoiceVisible(options.startChoice === true);
+  setTemplateChoiceVisible(options.templateChoice === true);
 }
 
 function showAppShell() {
@@ -276,6 +379,7 @@ function showAppShell() {
   els.appShell?.classList.remove("is-hidden");
   els.appShell?.classList.add("is-visible");
   setStartChoiceVisible(false);
+  setTemplateChoiceVisible(false);
 }
 
 function setStartChoiceVisible(visible) {
@@ -283,9 +387,20 @@ function setStartChoiceVisible(visible) {
   els.startChoicePanel?.setAttribute("aria-hidden", visible ? "false" : "true");
 }
 
+function setTemplateChoiceVisible(visible) {
+  els.templateChoicePanel?.classList.toggle("is-hidden", !visible);
+  els.templateChoicePanel?.setAttribute("aria-hidden", visible ? "false" : "true");
+}
+
 function openStartChoice() {
   navigateTo("#/start");
   window.setTimeout(() => els.startChoicePanel?.querySelector("[data-start-mode]")?.focus(), 0);
+}
+
+function openProjectTemplateChoice() {
+  localStorage.setItem(START_MODE_KEY, "new");
+  navigateTo(START_TEMPLATE_HASH);
+  window.setTimeout(() => els.templateChoicePanel?.querySelector("[data-template-id]")?.focus(), 0);
 }
 
 function closeStartChoice() {
@@ -325,13 +440,7 @@ function startWithMode(mode) {
   }
 
   if (startMode === "new") {
-    createNewProject({ silent: true });
-    navigateTo(APP_VIEW_HASHES.settings);
-    window.setTimeout(() => {
-      els.projectForm?.scrollIntoView({ block: "start" });
-      els.projectForm?.querySelector("input")?.focus();
-    }, 0);
-    showToast("새 프로젝트로 시작합니다. 프로젝트 정보를 입력하세요.");
+    navigateTo(START_TEMPLATE_HASH);
     return;
   }
 
@@ -341,11 +450,17 @@ function startWithMode(mode) {
 }
 
 function activateDemoProject() {
-  const existingDemo = state.projects.find(isDemoProject);
-  if (existingDemo) {
-    state.activeProjectId = existingDemo.id;
+  const demoIndex = state.projects.findIndex(isDemoProject);
+  const sampleProject = createSampleState().projects[0];
+  if (demoIndex >= 0) {
+    const existingDemo = state.projects[demoIndex];
+    if (existingDemo.title === sampleProject.title && existingDemo.notes === sampleProject.notes) {
+      state.activeProjectId = existingDemo.id;
+    } else {
+      state.projects[demoIndex] = sampleProject;
+      state.activeProjectId = sampleProject.id;
+    }
   } else {
-    const sampleProject = createSampleState().projects[0];
     state.projects.unshift(sampleProject);
     state.activeProjectId = sampleProject.id;
   }
@@ -356,7 +471,8 @@ function activateDemoProject() {
 }
 
 function isDemoProject(project) {
-  return project.title === "시흥 IC 순환 자원 관람 인프라" || String(project.notes || "").includes("샘플 모드");
+  const notes = String(project.notes || "");
+  return project.title === "빌라 사보아 재해석 스튜디오" || notes.includes("공개 데모용 교육 예시") || notes.includes("공개 데모용 가상 프로젝트") || notes.includes("샘플 모드");
 }
 
 function highlightBackupPanel() {
@@ -776,89 +892,99 @@ function createProject(overrides = {}) {
 function sampleAnalysis() {
   return {
     summary:
-      "폐기물 반입 동선, 관람 동선, CO₂ 순환 시스템의 경계를 평면과 단면에서 동시에 명확히 해야 한다.",
-    categories: ["동선", "단면", "환경", "프로그램"],
+      "빌라 사보아의 램프, 필로티, 옥상정원을 현대 주거의 생활 동선, 프라이버시, 환경 성능 기준으로 다시 검토해야 한다.",
+    categories: ["동선", "평면", "단면", "환경", "발표 논리"],
     designIssue:
-      "프로그램 간 동선 위계와 환경 제어 경계가 불명확해 산업 기능과 관람 경험이 같은 공간 논리 안에서 충돌할 수 있다.",
+      "상징적 동선과 실제 생활 동선 사이의 균형, 공적 영역과 사적 영역의 구분, 환경 성능의 보완이 재해석 설계의 주요 검토 과제가 된다.",
     designDiagnosis:
-      "폐기물 처리, 관람 교육, CO₂ 순환 시스템이 모두 흥미로운 요소로 제시되어 있지만, 각 프로그램이 어디서 분리되고 어디서 시각적으로 연결되는지 도면에서 읽히지 않는다.",
+      "빌라 사보아의 핵심 장치인 램프, 필로티, 옥상정원은 건축적 산책로와 근대건축의 상징성을 강하게 만든다. 그러나 현대 주거로 재해석할 경우 생활 편의성, 프라이버시, 접근성, 환경 성능을 어떤 방식으로 보완할지 도면에서 더 구체화해야 한다.",
     whyItMatters:
-      "폐기물 처리 시설은 위생, 안전, 운영 동선이 설계 신뢰도를 좌우한다. 관람객이 처리 공정을 어디까지 볼 수 있는지, 음압 구역과 공개 구역의 경계가 어디인지가 불명확하면 환경 인프라를 전시/교육 프로그램으로 전환한다는 논리가 약해진다.",
+      "이 작품은 명작이기 때문에 단순히 형태를 따라 하는 방식으로는 설득력이 약하다. 원작의 공간 개념을 이해한 뒤 오늘날의 생활 방식, 프라이버시, 접근성, 에너지 성능에 맞게 무엇을 유지하고 무엇을 조정하는지 명확히 보여줘야 한다.",
     reviewCriteria: [
-      "폐기물 차량, 운영자, 관람객 동선이 평면에서 서로 다른 선형과 출입 지점으로 구분되는가?",
-      "하역장, 열분해 모듈, CO₂ 전환 장치의 연결이 단면에서 공기 흐름과 함께 읽히는가?",
-      "관람자가 볼 수 있는 영역과 접근하면 안 되는 영역이 도면과 발표문에서 같은 기준으로 설명되는가?",
+      "램프가 단순한 조형 요소가 아니라 실제 생활 동선으로도 작동하는가?",
+      "공적 공간과 사적 공간의 위계가 평면에서 명확하게 읽히는가?",
+      "옥상정원이 상징적 장치에 그치지 않고 실제 거주 경험과 연결되는가?",
+      "필로티 하부 공간이 현대적 프로그램으로 재해석될 수 있는가?",
+      "빛, 열, 환기 등 환경 성능이 현대 기준에서 보완되었는가?",
     ],
     actionItems: [
       {
-        title: "폐기물 반입 동선과 관람객 동선을 분리한 평면 대안 작성",
+        title: "원작 램프 동선과 현대 생활 동선 비교 다이어그램 작성",
         priority: "high",
         category: "동선",
         reason:
-          "위생·안전 흐름과 전시/교육 흐름이 같은 전면부에서 겹치면 프로그램의 위계가 흐려진다.",
+          "빌라 사보아의 건축적 산책로가 현대 주거의 실제 생활 동선과 어떻게 겹치거나 충돌하는지 비교해야 한다.",
+        outputType: "다이어그램",
+        detail:
+          "원작의 램프 동선과 현대 가족의 일상 동선을 같은 기준으로 그려, 이동 길이, 접근성, 반복 사용성, 상징적 경험의 차이를 비교한다.",
+      },
+      {
+        title: "공적/사적 영역 위계를 평면에 표시",
+        priority: "high",
+        category: "평면",
+        reason:
+          "현대 주거로 재해석하려면 개방적인 평면 안에서도 가족 공유 영역과 개인 영역의 프라이버시 구조가 읽혀야 한다.",
         outputType: "평면도",
         detail:
-          "차량 진입, 하역, 운영자 이동, 관람객 진입을 서로 다른 색과 선형으로 표시하고 교차 지점이 있다면 완충실이나 시각적 관람 구간으로 분리한다.",
+          "거실, 가족 공유 공간, 개인실, 서비스 공간을 색상 또는 해치로 구분하고, 방문객 동선과 가족 동선이 만나는 지점을 표시한다.",
       },
       {
-        title: "하역장, 열분해 모듈, CO₂ 전환 장치를 관통하는 핵심 단면 작성",
-        priority: "high",
-        category: "단면",
-        reason:
-          "환경 시스템이 말로만 설명되면 건축 공간으로 구현된 장면이 약해진다.",
-        outputType: "단면도 / 다이어그램",
-        detail:
-          "하역장 음압 구역의 시작과 끝, 열분해 모듈의 위치, CO₂ 흐름, 관람 가능한 경계선을 한 단면 안에 겹쳐 표시한다.",
-      },
-      {
-        title: "CO₂ 순환 시스템의 공개 범위 다이어그램 추가",
+        title: "옥상정원과 필로티 하부의 현대적 프로그램 제안",
         priority: "normal",
-        category: "환경",
+        category: "프로그램",
         reason:
-          "관람자가 처리 공정을 어디까지 이해하고 어디서 차단되는지 보여줘야 교육 프로그램의 설득력이 생긴다.",
-        outputType: "다이어그램 / 패널",
+          "원작의 상징적 요소를 유지하면서도 실제 생활과 연결되는 프로그램으로 재해석해야 한다.",
+        outputType: "단면도 / 프로그램 다이어그램",
         detail:
-          "폐기물, 열, CO₂, 관람 시선의 흐름을 분리된 레이어로 그리고, 실제 접근 가능한 동선과 시각적으로만 관찰하는 구역을 구분한다.",
+          "필로티 하부에는 현대적 공유 활동이나 진입 완충 기능을, 옥상정원에는 실제 생활 가능한 외부 공간과 환경 성능 보완 전략을 제안한다.",
       },
     ],
     drawingTasks: [
-      "평면도에 차량, 운영자, 관람객 동선을 서로 다른 색과 범례로 표시한다.",
-      "핵심 단면에 하역장 음압 구역, 열분해 모듈, CO₂ 전환 장치, 관람 경계를 함께 표시한다.",
+      "원작의 램프 동선과 현대 생활 동선을 비교하는 평면 다이어그램을 작성한다.",
+      "공적 영역, 가족 공유 영역, 개인 영역을 색상 또는 해치로 구분한다.",
+      "필로티 하부와 옥상정원의 사용 프로그램을 평면에 명확히 표시한다.",
+      "단면에서 램프, 거실, 옥상정원이 어떻게 연속되는지 표현한다.",
     ],
     diagramTasks: [
-      "폐기물 처리 흐름과 CO₂ 순환 흐름을 분리한 시스템 다이어그램을 만든다.",
-      "관람객이 볼 수 있는 공정과 차단되는 공정을 시선 다이어그램으로 표시한다.",
+      "건축적 산책로 다이어그램을 만든다.",
+      "공적/사적 영역 위계 다이어그램을 만든다.",
+      "원작 개념 유지 요소와 현대적 보완 요소 비교 다이어그램을 만든다.",
+      "빛, 환기, 열환경 보완 전략 다이어그램을 만든다.",
     ],
     nextCriticChecklist: [
-      "분리된 폐기물 반입 동선과 관람 동선이 표시된 평면",
-      "하역장과 열분해 모듈을 통과하는 핵심 단면",
-      "CO₂ 순환 시스템의 공간 다이어그램",
+      "원작 램프 동선과 현대 생활 동선을 비교한 다이어그램",
+      "공적/사적 영역 위계가 표시된 평면",
+      "필로티 하부와 옥상정원의 현대적 사용 프로그램",
+      "환경 성능 보완 전략이 표시된 단면 또는 다이어그램",
     ],
     presentationLines: [
-      "이 프로젝트는 폐기물 처리 과정을 단순히 숨기는 것이 아니라, 안전하게 통제된 관람 경계를 통해 환경 인프라의 작동을 읽게 만드는 제안입니다.",
-      "평면에서는 위생·운영 동선과 관람 동선을 분리하고, 단면에서는 음압 구역과 CO₂ 순환 장치의 관계를 드러내는 것이 핵심입니다.",
+      "이 재해석은 빌라 사보아의 형태를 복제하는 것이 아니라, 건축적 산책로라는 원리를 현대 주거의 생활 동선으로 다시 번역하는 시도입니다.",
+      "원작의 필로티와 옥상정원은 유지하되, 오늘날의 거주성, 프라이버시, 환경 성능을 보완하는 방향으로 프로그램 위계를 재구성했습니다.",
+      "중요한 것은 명작의 이미지를 따라가는 것이 아니라, 그 작품이 제안했던 공간적 질문을 현재의 생활 조건에서 다시 묻는 것입니다.",
     ],
     portfolioNarrative:
-      "초기 계획은 폐기물 처리와 관람 프로그램을 병치하는 데 머물렀지만, 크리틱 이후 위생·운영 동선과 관람 동선을 분리하고 CO₂ 순환 시스템을 단면의 주된 서사로 드러내는 방향으로 발전했다.",
+      "초기안은 빌라 사보아의 상징적 요소를 인용하는 데 머물렀지만, 크리틱 이후 램프, 필로티, 옥상정원을 현대 주거의 생활 동선, 프라이버시, 환경 성능과 연결하는 방향으로 발전했다.",
     riskQuestions: [
-      "관람객은 폐기물 처리 공정을 어디까지 직접 볼 수 있는가?",
-      "음압 구역은 어디서 시작되고 어디서 끝나는가?",
-      "CO₂ 전환 시스템이 실제 공간에서 보이는 장면은 어디인가?",
+      "원작의 어떤 가치를 유지하고, 어떤 부분을 현대적으로 바꾸려는가?",
+      "램프는 여전히 중심 동선인가, 아니면 상징적 장치인가?",
+      "현대 주거에서 프라이버시는 어떻게 확보되는가?",
+      "필로티 하부 공간은 오늘날 어떤 프로그램으로 활용되는가?",
+      "옥상정원은 실제 생활 공간으로 작동하는가?",
     ],
   };
 }
 
 function createSampleState() {
   const project = createProject({
-    title: "시흥 IC 순환 자원 관람 인프라",
-    topic: "폐기물 처리와 CO₂ 순환 시스템을 결합한 공개형 환경 인프라",
-    site: "시흥 IC 인근 산업·교통 인프라 경계부",
+    title: "빌라 사보아 재해석 스튜디오",
+    topic: "르 코르뷔지에의 빌라 사보아를 현대적 생활 방식과 환경 성능 관점에서 다시 검토하는 주거 실험",
+    site: "프랑스 푸아시의 근대 주거 실험을 가정한 교육용 분석 프로젝트",
     concept:
-      "폐기물 반입, 열분해, CO₂ 순환, 관람 교육 동선을 분리하면서도 단면적으로 읽히게 만드는 공개형 인프라",
-    stage: "졸업설계 중간 크리틱 준비",
+      "근대건축의 5원칙을 유지하되, 오늘날의 거주성, 접근성, 환경성, 프로그램 다양성 관점에서 공간 흐름을 재해석한다.",
+    stage: "사례 분석 및 재해석 크리틱 준비",
     deadline: today(),
     notes:
-      "샘플 모드에서는 Firebase 설정 없이 프로젝트, 피드백, Mock 분석, 작업 리스트 흐름을 체험할 수 있습니다.",
+      "이 샘플은 공개 데모용 교육 예시입니다. 실제 사용자는 자신의 설계 프로젝트와 크리틱 피드백으로 교체해 사용할 수 있습니다.",
   });
   const feedbackId = uid("feedback");
   const analysis = sampleAnalysis();
@@ -868,9 +994,9 @@ function createSampleState() {
       date: today(),
       source: "교수",
       rawText:
-        "폐기물 반입 동선과 관람 동선이 너무 가까워 보인다. CO₂ 순환 시스템은 흥미롭지만, 공간적으로 어떻게 드러나는지 약하다. 하역장과 열분해 모듈의 연결 관계를 단면에서 더 명확히 보여줘야 한다.",
+        "빌라 사보아의 램프와 옥상정원은 공간적 경험을 만드는 강한 장치지만, 현대 주거 관점에서 보면 일상 생활의 편의성과 프라이버시가 다소 약하게 느껴진다. 필로티와 자유로운 평면은 개방감을 만들지만, 내부 프로그램의 위계와 실제 거주 동선이 명확하게 읽히지는 않는다. 이 작품을 오늘날의 주거로 재해석한다면, 상징적인 산책로 개념을 유지하면서도 생활 동선, 가족 구성원의 사적 영역, 환경 성능을 어떻게 보완할지 더 구체적으로 보여줘야 한다.",
       importance: "high",
-      keywords: ["동선", "CO₂", "단면", "이산화탄소"],
+      keywords: ["동선", "평면", "주거", "환경"],
       analysis,
       createdAt: nowIso(),
     },
@@ -1477,6 +1603,7 @@ function renderProjectForm() {
     $("projectDeadline").value = "";
     $("projectConcept").value = "";
     $("projectNotes").value = "";
+    els.feedbackText.placeholder = "크리틱에서 들은 말을 그대로 붙여넣으세요.";
     return;
   }
   setProjectFormDisabled(false);
@@ -1488,6 +1615,7 @@ function renderProjectForm() {
   $("projectDeadline").value = project.deadline;
   $("projectConcept").value = project.concept;
   $("projectNotes").value = project.notes;
+  els.feedbackText.placeholder = projectFeedbackPlaceholder(project);
 }
 
 function renderHomeView() {
@@ -2431,16 +2559,16 @@ function buildAnalysisPrompt(project, feedback) {
 - "공간적 구현이 필요합니다."
 
 좋은 예:
-"폐기물 반입 동선과 관람객 동선이 같은 전면부에서 겹치면, 위생·안전 프로그램과 전시/교육 프로그램의 위계가 흐려진다.
-다음 크리틱 전에는 평면에서 차량, 운영자, 관람객 동선을 서로 다른 선형으로 분리하고,
-단면에서는 하역장 음압 구역과 관람 가능 구역의 경계를 명확히 표시해야 한다."
+"빌라 사보아의 램프가 건축적 산책로로는 강하지만 현대 주거의 실제 생활 동선과 충돌한다면, 상징적 경험과 거주 편의성 사이의 균형이 약해진다.
+다음 크리틱 전에는 원작 램프 동선과 현대 생활 동선을 비교하는 다이어그램을 만들고,
+평면에서는 공적 영역, 가족 공유 영역, 개인 영역의 위계를 명확히 표시해야 한다."
 
 사용자가 말하지 않은 사실은 단정하지 말고 "검토 필요"라고 표현한다.
 반드시 JSON 객체만 반환한다.
 
 분류 카테고리:
 ${CATEGORIES.join(", ")}
-카테고리는 위 목록 중에서만 선택한다. CO2, co2, 이산화탄소는 태그에서는 CO₂로 정규화하고, 카테고리로는 환경을 사용한다.
+카테고리는 위 목록 중에서만 선택한다. 환경 시스템 관련 키워드는 태그로 정규화하고, 카테고리로는 환경을 사용한다.
 
 JSON 스키마:
 {
@@ -2575,28 +2703,30 @@ function fallbackAnalysis(project, feedback) {
   const second = categories[1] || "표현 / 패널";
   const topic = project.topic || project.title;
   const sourceText = `${project.topic} ${project.concept} ${feedback.rawText}`;
-  const hasWasteSystem = /폐기물|쓰레기|하역|열분해|처리|반입/.test(sourceText);
-  const hasVisitorFlow = /관람|방문|전시|교육/.test(sourceText);
-  const hasCarbonSystem = /co2|co₂|이산화탄소|탄소|순환/i.test(sourceText);
-  const diagnosis = hasWasteSystem || hasVisitorFlow
-    ? "프로그램 간 동선 위계와 환경 제어 경계가 불명확합니다. 운영·처리 흐름과 관람 경험이 어디서 분리되고 어디서 시각적으로 연결되는지 도면에서 더 분명하게 읽혀야 합니다."
+  const hasVillaSavoyeStudy = /빌라\s*사보아|사보아|르\s*코르뷔지에|램프|필로티|옥상정원|자유로운\s*평면|건축적\s*산책로|근대건축|현대\s*주거|프라이버시/i.test(sourceText);
+  const diagnosis = hasVillaSavoyeStudy
+    ? "빌라 사보아의 핵심 장치인 램프, 필로티, 옥상정원은 건축적 산책로와 근대건축의 상징성을 강하게 만들지만, 현대 주거로 재해석할 경우 상징적 동선과 실제 생활 동선의 균형, 공적 영역과 사적 영역의 구분, 환경 성능 보완이 주요 검토 과제가 됩니다."
     : "피드백은 설계 의도와 실제 산출물 사이의 연결이 약한 지점을 가리킵니다. 개념, 공간 구성, 표현 방식이 같은 기준으로 정렬되어야 합니다.";
-  const whyItMatters = hasWasteSystem
-    ? "폐기물 처리 시설은 위생, 안전, 운영 동선이 설계 신뢰도를 좌우합니다. 관람 동선이 처리 동선과 충돌하면 교육 프로그램의 설득력도 약해지고, 하역장이나 음압 구역의 경계가 모호하면 공간의 안전 기준을 설명하기 어렵습니다."
+  const whyItMatters = hasVillaSavoyeStudy
+    ? "이 작품은 명작이기 때문에 단순히 형태를 따라 하는 방식으로는 설득력이 약합니다. 재해석 설계에서는 원작의 공간 개념을 이해한 뒤 오늘날의 생활 방식, 프라이버시, 접근성, 에너지 성능에 맞게 어떤 부분을 유지하고 어떤 부분을 조정하는지 명확히 보여줘야 합니다."
     : "설계 문제의 원인이 도면에서 검증되지 않으면 크리틱은 형태 취향이나 표현 방식의 논쟁으로 흐르기 쉽습니다. 다음 검토 전에는 어떤 산출물에서 어떤 판단을 확인할 수 있는지 명확히 해야 합니다.";
-  const drawingTasks = hasWasteSystem
+  const drawingTasks = hasVillaSavoyeStudy
     ? [
-        "평면도에 차량 반입, 운영자 이동, 관람객 이동을 서로 다른 선형과 출입 지점으로 표시한다.",
-        "핵심 단면에 하역장, 처리 모듈, 음압 또는 차단 구역, 관람 가능 경계를 함께 표시한다.",
+        "원작의 램프 동선과 현대 생활 동선을 비교하는 평면 다이어그램을 작성한다.",
+        "공적 영역, 가족 공유 영역, 개인 영역을 색상 또는 해치로 구분한다.",
+        "필로티 하부와 옥상정원의 사용 프로그램을 평면에 명확히 표시한다.",
+        "단면에서 램프, 거실, 옥상정원이 어떻게 연속되는지 표현한다.",
       ]
     : [
         `${primary} 쟁점이 드러나는 핵심 평면 또는 단면을 한 장 선택해 수정 전후를 비교한다.`,
         "공개 영역, 운영 영역, 완충 영역처럼 판단 기준이 되는 경계를 도면 범례로 표시한다.",
       ];
-  const diagramTasks = hasCarbonSystem
+  const diagramTasks = hasVillaSavoyeStudy
     ? [
-        "CO₂ 흐름, 에너지 흐름, 관람 시선을 분리한 시스템 다이어그램을 만든다.",
-        "환경 시스템이 실제 공간에서 보이는 지점과 숨겨지는 지점을 레이어로 구분한다.",
+        "건축적 산책로 다이어그램을 만든다.",
+        "공적/사적 영역 위계 다이어그램을 만든다.",
+        "원작 개념 유지 요소와 현대적 보완 요소 비교 다이어그램을 만든다.",
+        "빛, 환기, 열환경 보완 전략 다이어그램을 만든다.",
       ]
     : [
         "피드백 이전과 이후의 설계 판단 변화를 한 장의 전후 비교 다이어그램으로 정리한다.",
@@ -2609,62 +2739,70 @@ function fallbackAnalysis(project, feedback) {
     designDiagnosis: diagnosis,
     whyItMatters,
     reviewCriteria: [
-      hasWasteSystem
-        ? "폐기물 반입, 운영자 이동, 관람객 동선이 평면에서 서로 다른 출입과 흐름으로 구분되는가?"
+      hasVillaSavoyeStudy
+        ? "램프가 단순한 조형 요소가 아니라 실제 생활 동선으로도 작동하는가?"
         : `${primary} 문제가 도면에서 검토 가능한 기준으로 표시되는가?`,
-      hasCarbonSystem
-        ? "CO₂ 또는 환경 시스템의 흐름이 단면과 다이어그램에서 공간적 경계와 함께 읽히는가?"
+      hasVillaSavoyeStudy
+        ? "공적 공간과 사적 공간의 위계가 평면에서 명확하게 읽히는가?"
         : "개념 설명이 실제 평면, 단면, 매스, 패널 표현으로 연결되는가?",
-      "다음 크리틱에서 리뷰어가 같은 도면을 보고 수정 의도를 바로 확인할 수 있는가?",
+      hasVillaSavoyeStudy
+        ? "옥상정원이 상징적 장치에 그치지 않고 실제 거주 경험과 연결되는가?"
+        : "다음 크리틱에서 리뷰어가 같은 도면을 보고 수정 의도를 바로 확인할 수 있는가?",
+      hasVillaSavoyeStudy
+        ? "필로티 하부 공간이 현대적 프로그램으로 재해석될 수 있는가?"
+        : "수정 이후에도 검토 필요로 남겨둘 쟁점이 명확한가?",
+      hasVillaSavoyeStudy
+        ? "빛, 열, 환기 등 환경 성능이 현대 기준에서 보완되었는가?"
+        : "다음 발표에서 유지할 판단과 조정할 판단이 구분되는가?",
     ],
     actionItems: [
       {
-        title: hasWasteSystem
-          ? "폐기물 반입 동선과 관람객 동선을 분리한 평면 대안 작성"
+        title: hasVillaSavoyeStudy
+          ? "원작 램프 동선과 현대 생활 동선 비교 다이어그램 작성"
           : `${primary} 이슈를 한 장의 핵심 도면으로 다시 정리`,
         priority: feedback.importance === "high" ? "high" : "normal",
-        category: hasWasteSystem ? "동선" : primary,
+        category: hasVillaSavoyeStudy ? "동선" : primary,
         reason:
-          hasWasteSystem
-            ? "처리 시설의 위생·안전 흐름과 전시/교육 흐름이 겹치면 프로그램 위계가 흐려집니다."
+          hasVillaSavoyeStudy
+            ? "빌라 사보아의 건축적 산책로가 현대 주거의 실제 생활 동선과 어떻게 겹치거나 충돌하는지 비교해야 합니다."
             : "크리틱에서 지적된 문제가 실제 공간 구성에서 어떻게 해결되는지 바로 확인할 수 있어야 합니다.",
-        outputType: hasWasteSystem
-          ? "평면도"
+        outputType: hasVillaSavoyeStudy
+          ? "다이어그램"
           : primary.includes("단면")
             ? "단면도"
             : primary.includes("평면")
               ? "평면도"
               : "다이어그램",
-        detail: hasWasteSystem
-          ? "차량 진입, 하역, 운영자 이동, 관람객 진입을 서로 다른 색과 선형으로 표시하고 교차 지점은 완충실, 관람창, 레벨 차이 중 하나로 처리합니다."
+        detail: hasVillaSavoyeStudy
+          ? "원작의 램프 동선과 현대 가족의 일상 동선을 같은 기준으로 그려, 이동 길이, 접근성, 반복 사용성, 상징적 경험의 차이를 비교합니다."
           : "수정 전 도면과 수정 후 도면을 나란히 두고, 바뀐 경계·동선·프로그램 관계를 굵은 선과 짧은 주석으로 표시합니다.",
       },
       {
-        title: hasWasteSystem
-          ? "하역장과 처리 모듈을 통과하는 핵심 단면 작성"
+        title: hasVillaSavoyeStudy
+          ? "공적/사적 영역 위계를 평면에 표시"
           : `${second} 관점의 전후 비교 다이어그램 작성`,
-        priority: hasWasteSystem ? "high" : "normal",
-        category: hasWasteSystem ? "단면" : second,
+        priority: hasVillaSavoyeStudy ? "high" : "normal",
+        category: hasVillaSavoyeStudy ? "평면" : second,
         reason:
-          hasWasteSystem
-            ? "공정과 환경 제어가 단면에서 보이지 않으면 기술 시스템이 건축 공간으로 번역되지 않습니다."
+          hasVillaSavoyeStudy
+            ? "현대 주거로 재해석하려면 개방적인 평면 안에서도 가족 공유 영역과 개인 영역의 프라이버시 구조가 읽혀야 합니다."
             : "피드백 이전과 이후의 판단 변화를 시각적으로 보여주면 설계 발전 과정이 더 선명해집니다.",
-        outputType: hasWasteSystem ? "단면도 / 다이어그램" : "다이어그램 / 패널",
-        detail: hasWasteSystem
-          ? "하역장, 처리 모듈, 음압 구역, 관람 가능 구역의 경계를 한 단면에 겹쳐 표시하고 공기 흐름은 별도 화살표로 분리합니다."
+        outputType: hasVillaSavoyeStudy ? "평면도" : "다이어그램 / 패널",
+        detail: hasVillaSavoyeStudy
+          ? "거실, 가족 공유 공간, 개인실, 서비스 공간을 색상 또는 해치로 구분하고, 방문객 동선과 가족 동선이 만나는 지점을 표시합니다."
           : "문제 지점, 수정 판단, 기대 효과를 3단계로 나누고 각 단계에 대응하는 도면 조각을 함께 배치합니다.",
       },
       {
-        title: hasCarbonSystem ? "CO₂ 순환 시스템의 공개 범위 다이어그램 추가" : "피드백을 반영한 30초 발표 문장 정리",
+        title: hasVillaSavoyeStudy ? "옥상정원과 필로티 하부의 현대적 프로그램 제안" : "피드백을 반영한 30초 발표 문장 정리",
         priority: "normal",
-        category: hasCarbonSystem ? "환경" : "발표 논리",
+        category: hasVillaSavoyeStudy ? "프로그램" : "발표 논리",
         reason:
-          hasCarbonSystem
-            ? "환경 시스템이 실제 공간에서 어디까지 드러나는지 보여줘야 개념과 체험이 연결됩니다."
+          hasVillaSavoyeStudy
+            ? "원작의 상징적 요소를 유지하면서도 실제 생활과 연결되는 프로그램으로 재해석해야 합니다."
             : "도면 수정 의도를 말로 압축해 두면 다음 크리틱에서 질문이 들어와도 답변 흐름이 흔들리지 않습니다.",
-        outputType: hasCarbonSystem ? "다이어그램 / 패널" : "발표문",
-        detail: hasCarbonSystem
-          ? "CO₂ 흐름, 설비 위치, 관람 시선을 분리된 레이어로 그리고, 관람자가 직접 보는 장면과 내부에서만 작동하는 장치를 구분합니다."
+        outputType: hasVillaSavoyeStudy ? "단면도 / 프로그램 다이어그램" : "발표문",
+        detail: hasVillaSavoyeStudy
+          ? "필로티 하부에는 현대적 공유 활동이나 진입 완충 기능을, 옥상정원에는 실제 생활 가능한 외부 공간과 환경 성능 보완 전략을 제안합니다."
           : "문제 진단, 수정 기준, 다음 검토에서 확인받을 점을 각각 한 문장으로 압축합니다.",
       },
     ],
@@ -2676,21 +2814,26 @@ function fallbackAnalysis(project, feedback) {
       "다음 질문에 답할 수 있는 짧은 발표 문장",
     ]),
     presentationLines: [
-      hasWasteSystem
-        ? "이번 수정에서는 폐기물 처리 동선과 관람 동선을 분리해 위생·안전 흐름을 먼저 확보하고, 관람은 통제된 경계 안에서 이루어지도록 조정했습니다."
+      hasVillaSavoyeStudy
+        ? "이 재해석은 빌라 사보아의 형태를 복제하는 것이 아니라, 건축적 산책로라는 원리를 현대 주거의 생활 동선으로 다시 번역하는 시도입니다."
         : `이번 수정에서는 ${primary} 문제가 단순한 표현 문제가 아니라 설계 구조의 문제라고 보고, 도면과 발표 논리를 함께 조정했습니다.`,
-      hasCarbonSystem
-        ? "CO₂ 순환 시스템은 설비 설명이 아니라 단면에서 읽히는 공간 장치로 보이도록 정리했습니다."
+      hasVillaSavoyeStudy
+        ? "원작의 필로티와 옥상정원은 유지하되, 오늘날의 거주성, 프라이버시, 환경 성능을 보완하는 방향으로 프로그램 위계를 재구성했습니다."
         : "피드백을 반영해 프로그램, 동선, 공간 경험이 서로 분리되지 않도록 다시 연결했습니다.",
+      hasVillaSavoyeStudy
+        ? "중요한 것은 명작의 이미지를 따라가는 것이 아니라, 그 작품이 제안했던 공간적 질문을 현재의 생활 조건에서 다시 묻는 것입니다."
+        : "다음 크리틱에서는 수정한 판단이 어떤 산출물에서 검증되는지 순서대로 보여주겠습니다.",
     ],
     portfolioNarrative:
-      hasWasteSystem
-        ? "초기안은 폐기물 처리와 관람 프로그램을 병치하는 데 머물렀지만, 크리틱 이후 운영 동선과 관람 동선을 분리하고 환경 제어 경계를 단면과 다이어그램으로 드러내는 방향으로 발전했다."
+      hasVillaSavoyeStudy
+        ? "초기안은 빌라 사보아의 상징적 요소를 인용하는 데 머물렀지만, 크리틱 이후 램프, 필로티, 옥상정원을 현대 주거의 생활 동선, 프라이버시, 환경 성능과 연결하는 방향으로 발전했다."
         : "초기안은 개념 설명에 비해 도면에서 설계 판단이 충분히 드러나지 않았다. 크리틱 이후 피드백을 작업 단위로 나누고, 핵심 도면과 발표 논리를 함께 수정하면서 설계의 변화 과정이 더 읽히도록 발전시켰다.",
     riskQuestions: [
-      hasVisitorFlow ? "관람객은 처리 공정 또는 운영 과정을 어디까지 볼 수 있는가?" : "이 수정이 실제 공간 경험에서는 어떤 장면으로 드러나는가?",
-      hasWasteSystem ? "음압 또는 차단 구역은 어디서 시작되고 어디서 끝나는가?" : "기존 안과 비교했을 때 가장 크게 달라진 설계 판단은 무엇인가?",
-      hasCarbonSystem ? "CO₂ 순환 시스템은 공간에서 보이는 장면과 숨겨지는 장치가 어떻게 나뉘는가?" : "다음 크리틱에서 검토 필요로 남겨둘 쟁점은 무엇인가?",
+      hasVillaSavoyeStudy ? "원작의 어떤 가치를 유지하고, 어떤 부분을 현대적으로 바꾸려는가?" : "이 수정이 실제 공간 경험에서는 어떤 장면으로 드러나는가?",
+      hasVillaSavoyeStudy ? "램프는 여전히 중심 동선인가, 아니면 상징적 장치인가?" : "기존 안과 비교했을 때 가장 크게 달라진 설계 판단은 무엇인가?",
+      hasVillaSavoyeStudy ? "현대 주거에서 프라이버시는 어떻게 확보되는가?" : "다음 크리틱에서 검토 필요로 남겨둘 쟁점은 무엇인가?",
+      hasVillaSavoyeStudy ? "필로티 하부 공간은 오늘날 어떤 프로그램으로 활용되는가?" : "발표에서 먼저 보여줄 산출물은 무엇인가?",
+      hasVillaSavoyeStudy ? "옥상정원은 실제 생활 공간으로 작동하는가?" : "아직 단정하지 않고 검토 필요로 남겨둘 부분은 무엇인가?",
     ],
   };
 }
@@ -2811,6 +2954,39 @@ function clearFeedbackForm() {
   els.feedbackKeywords.value = "";
   els.feedbackText.value = "";
   renderInputLength();
+}
+
+function getProjectTemplate(templateId) {
+  return PROJECT_TEMPLATES.find((template) => template.id === templateId) || PROJECT_TEMPLATES[PROJECT_TEMPLATES.length - 1];
+}
+
+function createProjectFromTemplate(templateId) {
+  const template = getProjectTemplate(templateId);
+  const defaults = { ...template.defaults };
+  if (template.id === "blank") {
+    defaults.title = `새 건축 프로젝트 ${state.projects.length + 1}`;
+  }
+
+  const project = createProject(defaults);
+  state.projects.unshift(project);
+  state.activeProjectId = project.id;
+  selectedFeedbackId = null;
+  outputView = "critic";
+  localStorage.setItem(ENTRY_KEY, "true");
+  localStorage.setItem(START_MODE_KEY, "new");
+  saveState();
+  renderAll();
+  navigateTo(APP_VIEW_HASHES.home);
+  window.setTimeout(() => {
+    els.feedbackText?.focus();
+  }, 0);
+  showToast(`${template.name} 템플릿으로 프로젝트를 만들었습니다.`);
+}
+
+function projectFeedbackPlaceholder(project) {
+  const haystack = `${project?.title || ""} ${project?.topic || ""} ${project?.stage || ""} ${project?.notes || ""}`;
+  const template = PROJECT_TEMPLATES.find((item) => item.id !== "blank" && haystack.includes(item.name));
+  return template?.feedbackPlaceholder || getProjectTemplate("blank").feedbackPlaceholder;
 }
 
 function createNewProject(options = {}) {
