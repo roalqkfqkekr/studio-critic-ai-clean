@@ -22,10 +22,73 @@ const FEEDBACK_EXAMPLES = {
   urbanInfra:
     "도시적 문제의식은 좋지만 대지 맥락, 보행 흐름, 프로그램 배치, 시스템 작동 방식이 서로 따로 보인다. 도시 스케일의 흐름과 건축 내부 프로그램이 어떻게 연결되는지 단계적으로 보여줘야 한다.",
   default:
-    "교수님이나 팀원에게 들은 말을 완벽히 정리하지 않아도 됩니다. 기억나는 문장을 그대로 붙여넣으면 AI가 설계 진단과 작업 카드로 정리합니다.",
+    "동선은 흥미롭지만 프로그램 간 관계가 평면에서 명확하게 읽히지 않는다. 중심 공간이 좋은 장치처럼 보이지만 실제로 사람들이 어떻게 모이고 이동하는지 더 구체적으로 보여줘야 한다. 조용한 공간과 활동적인 공간의 경계도 단면이나 배치에서 더 분명히 드러나면 좋겠다.",
 };
 const LEGAL_RISK_NOTICE =
   "이 항목은 법적 판정이 아니라 설계 검토용 체크리스트입니다. 실제 인허가 및 적합성은 최신 법령, 지자체 조례, 토지이음, 세움터, 전문가 검토로 확인하세요.";
+const IRRELEVANT_FEEDBACK_MESSAGE =
+  "이 입력은 건축 설계 크리틱 피드백으로 보기 어렵습니다. 교수 피드백, 도면 수정 사항, 공간 구성, 동선, 프로그램, 발표 논리와 관련된 내용을 입력해주세요.";
+const ARCHITECTURE_RELEVANCE_TERMS = [
+  "건축",
+  "설계",
+  "공간",
+  "도면",
+  "동선",
+  "프로그램",
+  "매스",
+  "평면",
+  "단면",
+  "입면",
+  "구조",
+  "재료",
+  "환경",
+  "법규",
+  "크리틱",
+  "교수",
+  "튜터",
+  "패널",
+  "모형",
+  "대지",
+  "배치",
+  "스케일",
+  "컨셉",
+  "개념",
+  "조닝",
+  "공적",
+  "사적",
+  "프라이버시",
+  "채광",
+  "환기",
+  "소음",
+  "동선이",
+  "단면이",
+  "매스가",
+  "논리가",
+];
+const OFF_TOPIC_TERMS = [
+  "저녁",
+  "점심",
+  "아침",
+  "메뉴",
+  "김치찌개",
+  "돈까스",
+  "맛집",
+  "요리",
+  "비트코인",
+  "주식",
+  "코인",
+  "투자",
+  "연애",
+  "데이트",
+  "게임",
+  "날씨",
+  "여행",
+  "코딩",
+  "에러",
+  "버그",
+  "디버그",
+  "추천해줘",
+];
 
 const CATEGORIES = [
   "컨셉",
@@ -77,6 +140,13 @@ const HASH_VIEW_SEGMENTS = {
   "critic-prep": "critic",
   portfolio: "portfolio",
   settings: "settings",
+};
+const ANALYSIS_BUSY_MESSAGES = {
+  feedback: "피드백 원문을 읽고 설계 쟁점을 분류하는 중입니다.",
+  reanalysis: "선택한 피드백을 다시 읽고 새 분석 결과를 준비하는 중입니다.",
+  critic: "누적 피드백과 작업 카드를 바탕으로 다음 크리틱 준비안을 정리하는 중입니다.",
+  portfolio: "누적 피드백과 완료 작업을 포트폴리오 서사로 정리하는 중입니다.",
+  structuring: "작업 카드와 법규/검토 리스크를 정리하는 중입니다.",
 };
 const PROJECT_TEMPLATES = [
   {
@@ -225,6 +295,8 @@ const els = {
   backupPanel: $("backupPanel"),
   newProjectBtn: $("newProjectBtn"),
   deleteProjectBtn: $("deleteProjectBtn"),
+  analysisLoadingOverlay: $("analysisLoadingOverlay"),
+  analysisLoadingMessage: $("analysisLoadingMessage"),
 };
 
 let state = loadState();
@@ -233,7 +305,11 @@ let outputView = "critic";
 let currentView = "home";
 let aiClient = null;
 let isBusy = false;
+let isAnalyzing = false;
+let analyzingMessage = "";
 let lastAiFallbackReason = "";
+const expandedFeedbackIds = new Set();
+const expandedTextKeys = new Set();
 const aiDiagnostics = {
   configFileStatus: "checking",
   apiKeyPresent: false,
@@ -284,6 +360,7 @@ function bindEvents() {
     link.addEventListener("click", handleLandingScrollLink);
   });
   window.addEventListener("hashchange", syncRouteFromHash);
+  document.addEventListener("click", handleExpandableTextClick);
   els.projectForm.addEventListener("submit", handleProjectSubmit);
   els.feedbackForm.addEventListener("submit", handleFeedbackSubmit);
   els.feedbackText.addEventListener("input", renderInputLength);
@@ -586,6 +663,9 @@ function fallbackCopyText(text) {
 function formatAnalysisForCopy(analysis, feedback) {
   const diagnosis = analysis.designDiagnosis || analysis.designIssue;
   return [
+    analysis.isRelevantToArchitecture === false
+      ? copyBlock("건축 설계 관련성", analysis.relevanceMessage || IRRELEVANT_FEEDBACK_MESSAGE)
+      : "",
     copyBlock("설계 진단", diagnosis),
     copyBlock("왜 중요한가", analysis.whyItMatters),
     copyListBlock("검토 기준", analysis.reviewCriteria),
@@ -707,6 +787,13 @@ function formatFeedbacksForMarkdown(feedbacks) {
         "원문:",
         markdownValue(feedback.rawText),
         "",
+        ...(analysis.isRelevantToArchitecture === false
+          ? [
+              "건축 설계 관련성:",
+              markdownValue(analysis.relevanceMessage || IRRELEVANT_FEEDBACK_MESSAGE),
+              "",
+            ]
+          : []),
         "AI 요약:",
         markdownValue(analysis.summary),
         "",
@@ -887,6 +974,8 @@ function nowIso() {
 
 function emptyAnalysis() {
   return {
+    isRelevantToArchitecture: true,
+    relevanceMessage: "",
     summary: "",
     categories: [],
     designIssue: "",
@@ -947,6 +1036,8 @@ function createProject(overrides = {}) {
 
 function sampleAnalysis() {
   return {
+    isRelevantToArchitecture: true,
+    relevanceMessage: "빌라 사보아 재해석에 대한 건축 설계 크리틱 피드백입니다.",
     summary:
       "빌라 사보아의 램프, 필로티, 옥상정원을 현대 주거의 생활 동선, 프라이버시, 환경 성능 기준으로 다시 검토해야 한다.",
     categories: ["동선", "평면", "단면", "환경", "발표 논리"],
@@ -1154,6 +1245,14 @@ function normalizeTask(task) {
 
 function normalizeAnalysis(analysis) {
   const safe = analysis || {};
+  const isRelevantToArchitecture = safe.isRelevantToArchitecture !== false;
+  const relevanceMessage = stringOr(
+    safe.relevanceMessage,
+    isRelevantToArchitecture ? "" : IRRELEVANT_FEEDBACK_MESSAGE,
+  );
+  if (!isRelevantToArchitecture) {
+    return irrelevantFeedbackAnalysis(relevanceMessage);
+  }
   const designDiagnosis = stringOr(safe.designDiagnosis, safe.designIssue || "");
   const reviewCriteria = toStringArray(safe.reviewCriteria);
   const drawingTasks = toStringArray(safe.drawingTasks);
@@ -1165,6 +1264,8 @@ function normalizeAnalysis(analysis) {
     ...diagramTasks,
   ]).slice(0, 10);
   return {
+    isRelevantToArchitecture,
+    relevanceMessage,
     summary: stringOr(safe.summary, ""),
     categories: normalizeCategories(safe.categories),
     designIssue: stringOr(safe.designIssue, designDiagnosis),
@@ -1181,6 +1282,27 @@ function normalizeAnalysis(analysis) {
     portfolioNarrative: stringOr(safe.portfolioNarrative, ""),
     riskQuestions: toStringArray(safe.riskQuestions),
     riskChecks: normalizeRiskChecks(safe.riskChecks),
+  };
+}
+
+function irrelevantFeedbackAnalysis(message = IRRELEVANT_FEEDBACK_MESSAGE) {
+  return {
+    isRelevantToArchitecture: false,
+    relevanceMessage: message || IRRELEVANT_FEEDBACK_MESSAGE,
+    summary: "건축 설계와 무관한 입력입니다.",
+    categories: ["기타"],
+    designIssue: "분석을 진행하지 않았습니다.",
+    designDiagnosis: "분석을 진행하지 않았습니다.",
+    whyItMatters: "Studio Critic AI는 건축 설계 피드백을 작업 카드와 발표 문장으로 정리하는 도구입니다.",
+    reviewCriteria: [],
+    actionItems: [],
+    drawingTasks: [],
+    diagramTasks: [],
+    nextCriticChecklist: [],
+    presentationLines: [],
+    portfolioNarrative: "",
+    riskQuestions: [],
+    riskChecks: [],
   };
 }
 
@@ -1523,6 +1645,7 @@ function renderAll() {
   renderTaskList();
   renderOutputPanel();
   renderInputLength();
+  renderBusyState();
 }
 
 function handleViewNavClick(event) {
@@ -1564,6 +1687,12 @@ function mountSharedFeedbackCard() {
 
 function renderAiMode() {
   if (!els.aiModePill) return;
+  if (isAnalyzing) {
+    els.aiModePill.textContent = aiClient?.available ? "Gemini 분석 중..." : "Demo Mode 분석 중...";
+    els.aiModePill.className = `status-pill ${aiClient?.available ? "ok" : "warn"}`;
+    els.aiModePill.title = analyzingMessage || "AI 분석을 처리하는 중입니다.";
+    return;
+  }
   if (!aiClient) {
     els.aiModePill.textContent = "AI 상태 확인 중";
     els.aiModePill.className = "status-pill";
@@ -1577,9 +1706,15 @@ function renderAiMode() {
     els.aiModePill.title = lastAiFallbackReason;
     return;
   }
-  els.aiModePill.textContent = aiClient.available ? "Gemini 연결 가능" : aiUnavailableLabel(aiClient.message);
+  const hasRecentGeminiSuccess =
+    aiClient.available && aiDiagnostics.lastErrorCode === "-" && /최근 Gemini (호출이|분석) 성공/.test(aiDiagnostics.lastErrorSummary);
+  els.aiModePill.textContent = aiClient.available
+    ? hasRecentGeminiSuccess
+      ? "Gemini 분석 성공"
+      : "Gemini 연결 가능"
+    : aiUnavailableLabel(aiClient.message);
   els.aiModePill.className = `status-pill ${aiClient.available ? "ok" : "warn"}`;
-  els.aiModePill.title = aiClient.message;
+  els.aiModePill.title = hasRecentGeminiSuccess ? aiDiagnostics.lastErrorSummary : aiClient.message;
 }
 
 function aiUnavailableLabel(message) {
@@ -1752,7 +1887,12 @@ function renderHomeView() {
       <div><dt>피드백</dt><dd>${feedbackCount}개</dd></div>
       <div><dt>열린 작업</dt><dd>${openTasks.length}개</dd></div>
     </dl>
-    <p>${escapeHtml(project.concept || project.topic || "프로젝트 브리프를 Settings에서 정리해두면 분석 품질이 좋아집니다.")}</p>
+    ${renderExpandableText(project.concept || project.topic || "프로젝트 브리프를 Settings에서 정리해두면 분석 품질이 좋아집니다.", {
+      key: `home-project-${project.id}-summary`,
+      className: "home-project-text",
+      collapsedLines: 5,
+      threshold: 220,
+    })}
   `;
 
   const feedback = latestAnalyzedFeedback(project) || project.feedbacks[0];
@@ -1771,8 +1911,19 @@ function renderHomeView() {
         <span class="source">${escapeHtml(feedback.source)}</span>
         <span class="importance ${escapeAttr(feedback.importance)}">${escapeHtml(PRIORITY_LABELS[feedback.importance] || "보통")}</span>
       </div>
-      <h3>${escapeHtml(diagnosis || analysis?.summary || "아직 분석되지 않은 피드백입니다.")}</h3>
-      <p>${escapeHtml(analysis?.whyItMatters || feedback.rawText || "Analysis 화면에서 선택 피드백을 재분석할 수 있습니다.")}</p>
+      ${renderExpandableText(diagnosis || analysis?.summary || "아직 분석되지 않은 피드백입니다.", {
+        key: `home-feedback-${feedback.id}-diagnosis`,
+        className: "home-analysis-title",
+        tagName: "h3",
+        collapsedLines: 3,
+        threshold: 150,
+      })}
+      ${renderExpandableText(analysis?.whyItMatters || feedback.rawText || "Analysis 화면에서 선택 피드백을 재분석할 수 있습니다.", {
+        key: `home-feedback-${feedback.id}-why`,
+        className: "home-analysis-body",
+        collapsedLines: 5,
+        threshold: 240,
+      })}
     `;
   }
 
@@ -1795,8 +1946,20 @@ function renderHomeView() {
             <article class="home-task-item">
               <span class="task-check" aria-hidden="true"></span>
               <div>
-                <strong>${escapeHtml(task.title)}</strong>
+                ${renderExpandableText(task.title, {
+                  key: `home-task-${task.id}-title`,
+                  className: "home-task-title",
+                  tagName: "strong",
+                  collapsedLines: 2,
+                  threshold: 78,
+                })}
                 <span>${escapeHtml(task.outputType || task.category || "작업")} · ${escapeHtml(PRIORITY_LABELS[task.priority] || "보통")}</span>
+                ${task.detail || task.reason ? renderExpandableText(task.detail || task.reason, {
+                  key: `home-task-${task.id}-detail`,
+                  className: "home-task-detail",
+                  collapsedLines: 3,
+                  threshold: 130,
+                }) : ""}
               </div>
             </article>
           `,
@@ -1851,28 +2014,42 @@ function renderFeedbackTimeline() {
 
   els.feedbackTimeline.innerHTML = project.feedbacks
     .map((feedback) => {
-      const summary = feedback.analysis?.summary || "아직 분석되지 않은 피드백입니다. 재분석을 실행하세요.";
-      const diagnosis = feedback.analysis?.designDiagnosis || feedback.analysis?.designIssue || "";
-      const rawPreview = truncate(feedback.rawText, 150);
+      const isIrrelevant = feedback.analysis?.isRelevantToArchitecture === false;
+      const summary = isIrrelevant
+        ? "건축 설계 피드백으로 보기 어려운 입력입니다."
+        : feedback.analysis?.summary || "아직 분석되지 않은 피드백입니다. 재분석을 실행하세요.";
+      const diagnosis = isIrrelevant
+        ? feedback.analysis?.relevanceMessage || IRRELEVANT_FEEDBACK_MESSAGE
+        : feedback.analysis?.designDiagnosis || feedback.analysis?.designIssue || "";
       const tags = displayTags(feedback.keywords, feedback.analysis?.categories)
         .slice(0, 8)
         .map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`)
         .join("");
-      const activeClass = feedback.id === selectedFeedbackId ? "active" : "";
+      const activeClass = `${feedback.id === selectedFeedbackId ? "active" : ""} ${isIrrelevant ? "is-irrelevant" : ""}`.trim();
       return `
         <article class="timeline-item ${activeClass}" data-feedback-id="${escapeAttr(feedback.id)}">
-          <button class="timeline-select ${activeClass}" data-feedback-id="${escapeAttr(feedback.id)}" type="button">
+          <div class="timeline-select ${activeClass}" data-feedback-id="${escapeAttr(feedback.id)}" role="button" tabindex="0">
             <div class="timeline-meta">
               <span class="date">${escapeHtml(feedback.date)}</span>
               <span class="source">${escapeHtml(feedback.source)}</span>
               <span class="importance ${escapeAttr(feedback.importance)}">${escapeHtml(PRIORITY_LABELS[feedback.importance] || "보통")}</span>
             </div>
-            <span class="feedback-label">AI 요약</span>
-            <p class="feedback-summary">${escapeHtml(summary)}</p>
-            ${diagnosis ? `<p class="feedback-diagnosis">${escapeHtml(truncate(diagnosis, 140))}</p>` : ""}
-            <p class="feedback-raw">${escapeHtml(rawPreview)}</p>
+            <div class="timeline-text-group">
+              ${renderTimelineScrollText(summary, {
+                label: isIrrelevant ? "입력 안내" : "AI 요약",
+                className: "timeline-summary-text feedback-summary",
+              })}
+              ${diagnosis ? renderTimelineScrollText(diagnosis, {
+                label: isIrrelevant ? "안내" : "설계 진단",
+                className: "timeline-diagnosis-text feedback-diagnosis",
+              }) : ""}
+              ${renderTimelineScrollText(feedback.rawText || "원문 없음", {
+                label: "피드백 원문",
+                className: "timeline-raw-text feedback-raw",
+              })}
+            </div>
             <div class="tags">${tags}</div>
-          </button>
+          </div>
           <div class="item-actions">
             <button data-feedback-action="reanalyze" data-feedback-id="${escapeAttr(feedback.id)}" type="button">재분석</button>
             <button class="danger" data-feedback-action="delete" data-feedback-id="${escapeAttr(feedback.id)}" type="button">삭제</button>
@@ -1928,6 +2105,28 @@ function renderAnalysisCard() {
 
   const analysis = feedback.analysis;
   const diagnosis = analysis.designDiagnosis || analysis.designIssue;
+  const analysisSourceBadge = mockAnalysisBadgeLabel();
+  if (analysis.isRelevantToArchitecture === false) {
+    els.analysisCard.className = "analysis-card relevance-card panel-scroll";
+    els.analysisCard.innerHTML = `
+      <div class="analysis-toolbar">
+        <button data-analysis-action="reanalyze" type="button">재분석</button>
+        <button class="danger" data-analysis-action="delete-feedback" type="button">피드백 삭제</button>
+      </div>
+      <div class="analysis-lead relevance-lead">
+        <span class="card-icon icon-feedback" aria-hidden="true"></span>
+        <div>
+          <span class="card-kicker">입력 안내</span>
+          ${analysisSourceBadge ? `<span class="analysis-source-badge">${escapeHtml(analysisSourceBadge)}</span>` : ""}
+          <h3>건축 설계 피드백으로 보기 어려운 입력입니다</h3>
+          <p>${escapeHtml(analysis.relevanceMessage || IRRELEVANT_FEEDBACK_MESSAGE)}</p>
+        </div>
+      </div>
+      ${feedbackMeta}
+      ${renderEmptyState("feedback", "작업 카드가 생성되지 않았습니다", "교수 피드백, 도면 수정 사항, 공간 구성, 동선, 프로그램, 발표 논리와 관련된 내용을 입력하면 분석과 작업 카드가 생성됩니다.")}
+    `;
+    return;
+  }
   els.analysisCard.className = "analysis-card panel-scroll";
   els.analysisCard.innerHTML = `
     <div class="analysis-toolbar">
@@ -1938,6 +2137,7 @@ function renderAnalysisCard() {
       <span class="card-icon icon-spark" aria-hidden="true"></span>
       <div>
         <span class="card-kicker">AI 설계 진단</span>
+        ${analysisSourceBadge ? `<span class="analysis-source-badge">${escapeHtml(analysisSourceBadge)}</span>` : ""}
         <h3>${escapeHtml(diagnosis || "설계 진단이 아직 정리되지 않았습니다.")}</h3>
       </div>
     </div>
@@ -1980,6 +2180,12 @@ function renderAnalysisCard() {
     <h4>포트폴리오 서사</h4>
     <p>${escapeHtml(analysis.portfolioNarrative || "누적 피드백이 쌓이면 서사가 더 구체화됩니다.")}</p>
   `;
+}
+
+function mockAnalysisBadgeLabel() {
+  if (!lastAiFallbackReason && aiDiagnostics.lastErrorCode === "-") return "";
+  if (aiDiagnostics.lastErrorCode === "CONFIG_FILE_LOAD_FAILED") return "Demo Mode 분석";
+  return "Mock fallback 분석";
 }
 
 function renderTaskList() {
@@ -2038,7 +2244,13 @@ function renderTaskCard(task) {
       <div class="task-top">
         <div class="task-title-row">
           <span class="task-check" aria-hidden="true"></span>
-          <strong>${escapeHtml(task.title)}</strong>
+          ${renderExpandableText(task.title, {
+            key: `task-${task.id}-title`,
+            className: "task-title-text",
+            tagName: "strong",
+            collapsedLines: 3,
+            threshold: 120,
+          })}
         </div>
         <div class="task-actions">
           <button class="status-cycle ${escapeAttr(task.status)}" data-task-id="${escapeAttr(task.id)}" data-task-action="status" type="button">
@@ -2052,8 +2264,18 @@ function renderTaskCard(task) {
         <span class="tag">${escapeHtml(task.category || "기타")}</span>
         ${task.outputType ? `<span class="tag">${escapeHtml(task.outputType)}</span>` : ""}
       </div>
-      ${task.reason ? `<p>${escapeHtml(task.reason)}</p>` : ""}
-      ${task.detail ? `<p class="task-detail">${escapeHtml(task.detail)}</p>` : ""}
+      ${task.reason ? renderExpandableText(task.reason, {
+        key: `task-${task.id}-reason`,
+        className: "task-reason",
+        collapsedLines: 4,
+        threshold: 180,
+      }) : ""}
+      ${task.detail ? renderExpandableText(task.detail, {
+        key: `task-${task.id}-detail`,
+        className: "task-detail",
+        collapsedLines: 5,
+        threshold: 220,
+      }) : ""}
     </article>
   `;
 }
@@ -2166,6 +2388,61 @@ function displayTags(keywords = [], categories = []) {
   return uniqueStrings([...normalizeCategories(categories), ...normalizeTags(keywords)]).filter(Boolean);
 }
 
+function renderExpandableText(text, options = {}) {
+  const value = String(text ?? "").trim();
+  const fallback = options.fallback ?? "";
+  const displayValue = value || fallback;
+  if (!displayValue) return "";
+  const key = options.key || `text-${hashText(displayValue)}`;
+  const collapsedLines = Number(options.collapsedLines || 5);
+  const threshold = Number(options.threshold || 180);
+  const tagName = ["p", "strong", "span", "h3"].includes(options.tagName) ? options.tagName : "p";
+  const className = options.className ? ` ${options.className}` : "";
+  const lineCount = displayValue.split(/\r?\n/).length;
+  const needsToggle = Boolean(options.alwaysToggle) || displayValue.length > threshold || lineCount > collapsedLines + 1;
+  const isExpanded = expandedTextKeys.has(key) || !needsToggle;
+  const stateClass = isExpanded ? "is-expanded" : "is-collapsed";
+  const label = options.label ? `<span class="feedback-label">${escapeHtml(options.label)}</span>` : "";
+  const style = ` style="--collapsed-lines:${Math.max(1, collapsedLines)}"`;
+
+  return `
+    <div class="expandable-text ${stateClass}${needsToggle ? " has-toggle" : ""}"${style}>
+      ${label}
+      <${tagName} class="expandable-body${className}">${escapeHtml(displayValue)}</${tagName}>
+      ${
+        needsToggle
+          ? `<button class="text-toggle" data-expand-key="${escapeAttr(key)}" type="button" aria-expanded="${isExpanded ? "true" : "false"}">${isExpanded ? "접기" : "전체 보기"}</button>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+function renderTimelineScrollText(text, options = {}) {
+  const value = String(text ?? "").trim();
+  const fallback = options.fallback ?? "";
+  const displayValue = value || fallback;
+  if (!displayValue) return "";
+  const label = options.label ? `<span class="feedback-label">${escapeHtml(options.label)}</span>` : "";
+  const className = options.className ? ` ${options.className}` : "";
+
+  return `
+    <div class="timeline-scroll-block">
+      ${label}
+      <div class="timeline-scroll-text${className}" tabindex="0">${escapeHtml(displayValue)}</div>
+    </div>
+  `;
+}
+
+function hashText(value) {
+  let hash = 0;
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
 function renderActionItems(items) {
   const values = Array.isArray(items) ? items : [];
   if (values.length === 0) return `<p class="muted list-empty">아직 생성된 작업이 없습니다.</p>`;
@@ -2251,6 +2528,10 @@ function handleProjectSubmit(event) {
 
 async function handleFeedbackSubmit(event) {
   event.preventDefault();
+  if (isBusy) {
+    showToast("AI 분석이 진행 중입니다. 잠시만 기다려주세요.");
+    return;
+  }
   await addFeedbackFromFormAndAnalyze();
 }
 
@@ -2264,11 +2545,36 @@ function handleProjectListClick(event) {
   renderAll();
 }
 
+function handleExpandableTextClick(event) {
+  const button = event.target.closest("[data-expand-key]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const key = button.dataset.expandKey;
+  if (!key) return;
+  if (expandedTextKeys.has(key)) {
+    expandedTextKeys.delete(key);
+  } else {
+    expandedTextKeys.add(key);
+  }
+  renderAll();
+}
+
 async function handleTimelineClick(event) {
+  if (event.target.closest("[data-expand-key]")) return;
   const actionButton = event.target.closest("[data-feedback-action]");
   if (actionButton) {
     const feedbackId = actionButton.dataset.feedbackId;
-    if (actionButton.dataset.feedbackAction === "delete") {
+    if (actionButton.dataset.feedbackAction === "toggle-text") {
+      if (expandedFeedbackIds.has(feedbackId)) {
+        expandedFeedbackIds.delete(feedbackId);
+      } else {
+        expandedFeedbackIds.add(feedbackId);
+      }
+      renderFeedbackTimeline();
+    } else if (isBusy) {
+      showToast("AI 분석이 진행 중입니다. 잠시만 기다려주세요.");
+    } else if (actionButton.dataset.feedbackAction === "delete") {
       deleteFeedback(feedbackId);
     } else if (actionButton.dataset.feedbackAction === "reanalyze") {
       await reanalyzeFeedback(feedbackId);
@@ -2288,6 +2594,10 @@ async function handleAnalysisCardClick(event) {
   const feedback = selectedFeedback();
   if (!feedback) {
     showToast("선택된 피드백이 없습니다.");
+    return;
+  }
+  if (isBusy) {
+    showToast("AI 분석이 진행 중입니다. 잠시만 기다려주세요.");
     return;
   }
   if (actionButton.dataset.analysisAction === "delete-feedback") {
@@ -2317,6 +2627,10 @@ function handleTaskClick(event) {
 }
 
 async function handleAnalyzeButton() {
+  if (isBusy) {
+    showToast("AI 분석이 진행 중입니다. 잠시만 기다려주세요.");
+    return;
+  }
   const project = getActiveProject();
   const feedback = selectedFeedback(project);
   if (!feedback) {
@@ -2360,18 +2674,29 @@ async function addFeedbackFromFormAndAnalyze() {
 }
 
 async function runAnalysisForFeedback(project, feedback) {
-  setBusy(true);
+  setBusy(true, feedback.analysis ? ANALYSIS_BUSY_MESSAGES.reanalysis : ANALYSIS_BUSY_MESSAGES.feedback);
   try {
+    await waitForPaint();
+    setAnalyzingStep("설계 이슈를 분류하고 Gemini 응답을 기다리는 중입니다.");
     const analysis = await analyzeFeedback(project, feedback);
+    setAnalyzingStep(ANALYSIS_BUSY_MESSAGES.structuring);
     const fallbackReason = lastAiFallbackReason;
+    if (!fallbackReason) {
+      updateAiDiagnostics({
+        lastErrorCode: "-",
+        lastErrorSummary: `최근 Gemini 분석 성공. 응답 스키마 정규화 완료: ${analysisFieldSummary(analysis)}.`,
+      });
+    }
     feedback.analysis = analysis;
     feedback.keywords = normalizeTags([...feedback.keywords, ...analysis.categories]);
     project.tasks = project.tasks.filter((task) => task.sourceFeedbackId !== feedback.id);
-    project.tasks.unshift(
-      ...analysis.actionItems.map((item) =>
-        createTask(item, feedback.id, item.category || analysis.categories[0] || "기타"),
-      ),
-    );
+    if (analysis.isRelevantToArchitecture !== false) {
+      project.tasks.unshift(
+        ...analysis.actionItems.map((item) =>
+          createTask(item, feedback.id, item.category || analysis.categories[0] || "기타"),
+        ),
+      );
+    }
     project.criticPlan = fallbackCriticPlan(project);
     project.portfolioDraft = fallbackPortfolioDraft(project);
     project.updatedAt = nowIso();
@@ -2438,6 +2763,10 @@ function deleteTask(taskId) {
 }
 
 async function handleCriticPrep() {
+  if (isBusy) {
+    showToast("AI 분석이 진행 중입니다. 잠시만 기다려주세요.");
+    return;
+  }
   const project = getActiveProject();
   if (!project || project.feedbacks.length === 0) {
     setView("critic");
@@ -2445,8 +2774,9 @@ async function handleCriticPrep() {
     showToast("다음 크리틱 준비를 만들 피드백이 없습니다.");
     return;
   }
-  setBusy(true);
+  setBusy(true, ANALYSIS_BUSY_MESSAGES.critic);
   try {
+    await waitForPaint();
     let plan;
     let fallbackReason = "";
     try {
@@ -2473,6 +2803,10 @@ async function handleCriticPrep() {
 }
 
 async function handlePortfolioDraft() {
+  if (isBusy) {
+    showToast("AI 분석이 진행 중입니다. 잠시만 기다려주세요.");
+    return;
+  }
   const project = getActiveProject();
   if (!project || project.feedbacks.length === 0) {
     setView("portfolio");
@@ -2480,8 +2814,9 @@ async function handlePortfolioDraft() {
     showToast("포트폴리오 서사를 만들 피드백이 없습니다.");
     return;
   }
-  setBusy(true);
+  setBusy(true, ANALYSIS_BUSY_MESSAGES.portfolio);
   try {
+    await waitForPaint();
     let draft;
     let fallbackReason = "";
     try {
@@ -2508,6 +2843,12 @@ async function handlePortfolioDraft() {
 }
 
 async function analyzeFeedback(project, feedback) {
+  const relevance = validateFeedbackRelevance(feedback);
+  if (!relevance.isRelevant) {
+    lastAiFallbackReason = "";
+    renderAiMode();
+    return irrelevantFeedbackAnalysis(relevance.message);
+  }
   try {
     return await requestJsonFromModel(buildAnalysisPrompt(project, feedback), normalizeAnalysis);
   } catch (error) {
@@ -2515,6 +2856,27 @@ async function analyzeFeedback(project, feedback) {
     recordAiFallback(aiClient && !aiClient.available ? "Firebase 연결 준비 실패" : "Gemini 분석 실패", error);
     return fallbackAnalysis(project, feedback);
   }
+}
+
+function validateFeedbackRelevance(feedback) {
+  const rawText = String(feedback?.rawText || "");
+  const keywords = normalizeTags(feedback?.keywords).join(" ");
+  const source = `${rawText} ${keywords}`.toLowerCase();
+  const compact = source.replace(/\s+/g, "");
+  const hasArchitectureTerm = ARCHITECTURE_RELEVANCE_TERMS.some((term) =>
+    source.includes(String(term).toLowerCase()),
+  );
+  if (hasArchitectureTerm) {
+    return { isRelevant: true, message: "" };
+  }
+  if (compact.length <= 5) {
+    return { isRelevant: false, message: IRRELEVANT_FEEDBACK_MESSAGE };
+  }
+  const hasOffTopicTerm = OFF_TOPIC_TERMS.some((term) => source.includes(String(term).toLowerCase()));
+  if (hasOffTopicTerm) {
+    return { isRelevant: false, message: IRRELEVANT_FEEDBACK_MESSAGE };
+  }
+  return { isRelevant: false, message: IRRELEVANT_FEEDBACK_MESSAGE };
 }
 
 async function requestJsonFromModel(prompt, normalizer) {
@@ -2563,6 +2925,27 @@ function recordAiFallback(context, error) {
   });
   renderAiMode();
   return reason;
+}
+
+function analysisFieldSummary(analysis) {
+  const requiredFields = [
+    "isRelevantToArchitecture",
+    "relevanceMessage",
+    "summary",
+    "categories",
+    "designDiagnosis",
+    "whyItMatters",
+    "reviewCriteria",
+    "actionItems",
+    "drawingTasks",
+    "diagramTasks",
+    "riskQuestions",
+    "presentationLines",
+    "portfolioNarrative",
+    "riskChecks",
+  ];
+  const ready = requiredFields.filter((field) => Object.hasOwn(analysis || {}, field));
+  return `${ready.length}/${requiredFields.length}개 필드 준비`;
 }
 
 function aiFallbackToast(actionLabel, fallbackLabel) {
@@ -2684,6 +3067,12 @@ function buildAnalysisPrompt(project, feedback) {
 6. 불확실한 내용은 단정하지 말고 "검토 필요"라고 표시해라.
 7. 결과는 반드시 JSON 객체만 반환해라.
 
+관련성 안전 원칙:
+- 입력이 건축 설계 크리틱, 공간 피드백, 도면 검토, 발표 논리, 포트폴리오 정리와 관련 없으면 억지로 건축 분석을 만들지 마라.
+- 무관한 입력이면 isRelevantToArchitecture를 false로 반환하고, 사용자가 어떤 건축 설계 피드백을 입력해야 하는지 relevanceMessage에 안내하라.
+- 무관한 입력이면 actionItems, drawingTasks, diagramTasks, riskChecks, reviewCriteria, riskQuestions, presentationLines, nextCriticChecklist는 빈 배열로 반환하라.
+- 무관한 입력에 대해 법규, 설계 판단, 공간 조건을 꾸며내지 마라.
+
 법규/검토 리스크 원칙:
 - 법규를 자동 판정하지 마라.
 - 적법/위법을 단정하지 마라.
@@ -2712,6 +3101,8 @@ ${CATEGORIES.join(", ")}
 
 JSON 스키마:
 {
+  "isRelevantToArchitecture": true,
+  "relevanceMessage": "건축 설계 크리틱과 관련되는 이유 또는 무관할 때 입력 가이드",
   "summary": "피드백의 핵심을 한 문장으로 압축",
   "categories": ["동선", "단면", "환경"],
   "designIssue": "designDiagnosis와 같은 내용. 기존 호환용 필드",
@@ -2757,6 +3148,7 @@ JSON 스키마:
 - reviewCriteria는 다음 크리틱 때 판단 기준으로 사용할 수 있게 쓴다.
 - riskChecks는 법적 적합성 판정이 아니라 확인해야 할 가능성이 있는 항목만 조심스럽게 쓴다.
 - summary는 짧게, designDiagnosis와 whyItMatters는 더 구체적으로 쓴다.
+- 단, isRelevantToArchitecture가 false인 경우 위 최소 개수 기준은 적용하지 말고 모든 작업/리스크 배열을 비워라.
 
 프로젝트:
 ${projectDigest(project)}
@@ -2848,180 +3240,388 @@ ${tasks || "없음"}
 }
 
 function fallbackAnalysis(project, feedback) {
-  const categories = inferCategories(`${project.topic} ${project.concept} ${feedback.rawText}`, feedback.keywords);
+  const relevance = validateFeedbackRelevance(feedback);
+  if (!relevance.isRelevant) {
+    return irrelevantFeedbackAnalysis(relevance.message);
+  }
+  const rawText = `${feedback.rawText || ""} ${normalizeTags(feedback.keywords).join(" ")}`;
+  const categories = inferCategories(rawText, feedback.keywords);
   const primary = categories[0] || "기타";
-  const second = categories[1] || "표현 / 패널";
   const topic = project.topic || project.title;
-  const sourceText = `${project.topic} ${project.concept} ${feedback.rawText}`;
-  const hasVillaSavoyeStudy = /빌라\s*사보아|사보아|르\s*코르뷔지에|램프|필로티|옥상정원|자유로운\s*평면|건축적\s*산책로|근대건축|현대\s*주거|프라이버시/i.test(sourceText);
-  const diagnosis = hasVillaSavoyeStudy
-    ? "빌라 사보아의 핵심 장치인 램프, 필로티, 옥상정원은 건축적 산책로와 근대건축의 상징성을 강하게 만들지만, 현대 주거로 재해석할 경우 상징적 동선과 실제 생활 동선의 균형, 공적 영역과 사적 영역의 구분, 환경 성능 보완이 주요 검토 과제가 됩니다."
-    : "피드백은 설계 의도와 실제 산출물 사이의 연결이 약한 지점을 가리킵니다. 개념, 공간 구성, 표현 방식이 같은 기준으로 정렬되어야 합니다.";
-  const whyItMatters = hasVillaSavoyeStudy
-    ? "이 작품은 명작이기 때문에 단순히 형태를 따라 하는 방식으로는 설득력이 약합니다. 재해석 설계에서는 원작의 공간 개념을 이해한 뒤 오늘날의 생활 방식, 프라이버시, 접근성, 에너지 성능에 맞게 어떤 부분을 유지하고 어떤 부분을 조정하는지 명확히 보여줘야 합니다."
-    : "설계 문제의 원인이 도면에서 검증되지 않으면 크리틱은 형태 취향이나 표현 방식의 논쟁으로 흐르기 쉽습니다. 다음 검토 전에는 어떤 산출물에서 어떤 판단을 확인할 수 있는지 명확히 해야 합니다.";
-  const drawingTasks = hasVillaSavoyeStudy
-    ? [
-        "원작의 램프 동선과 현대 생활 동선을 비교하는 평면 다이어그램을 작성한다.",
-        "공적 영역, 가족 공유 영역, 개인 영역을 색상 또는 해치로 구분한다.",
-        "필로티 하부와 옥상정원의 사용 프로그램을 평면에 명확히 표시한다.",
-        "단면에서 램프, 거실, 옥상정원이 어떻게 연속되는지 표현한다.",
-      ]
-    : [
-        `${primary} 쟁점이 드러나는 핵심 평면 또는 단면을 한 장 선택해 수정 전후를 비교한다.`,
-        "공개 영역, 운영 영역, 완충 영역처럼 판단 기준이 되는 경계를 도면 범례로 표시한다.",
-      ];
-  const diagramTasks = hasVillaSavoyeStudy
-    ? [
-        "건축적 산책로 다이어그램을 만든다.",
-        "공적/사적 영역 위계 다이어그램을 만든다.",
-        "원작 개념 유지 요소와 현대적 보완 요소 비교 다이어그램을 만든다.",
-        "빛, 환기, 열환경 보완 전략 다이어그램을 만든다.",
-      ]
-    : [
-        "피드백 이전과 이후의 설계 판단 변화를 한 장의 전후 비교 다이어그램으로 정리한다.",
-        "프로그램, 동선, 공간 경험의 관계를 선과 영역으로 단순화해 표시한다.",
-      ];
-  const riskChecks = hasVillaSavoyeStudy
-    ? [
-        {
-          title: "현대 주거 기준의 접근성 검토",
-          type: "접근성",
-          reason:
-            "램프가 건축적 산책로로 작동하지만, 실제 이동 약자 접근성과 생활 동선으로도 적절한지 확인할 필요가 있습니다.",
-          checkMethod: "평면과 단면에서 진입부, 램프 경사, 수직 이동 동선을 함께 표시합니다.",
-          caution: "정확한 적합성은 관련 법규와 현행 기준을 별도로 확인해야 합니다.",
-        },
-        {
-          title: "옥상정원의 안전 및 유지관리 검토",
-          type: "운영 / 안전",
-          reason:
-            "옥상정원이 실제 생활 공간으로 사용될 경우 난간, 방수, 유지관리, 피난과 관련된 검토가 필요합니다.",
-          checkMethod: "단면도와 옥상 평면에 이용 범위, 접근 동선, 안전 경계, 관리 동선을 표시합니다.",
-          caution: "이 앱은 법적 판정이 아니라 검토 항목만 제안합니다.",
-        },
-      ]
-    : [
-        {
-          title: "사용자 동선과 피난 흐름 검토",
-          type: "피난 / 운영",
-          reason:
-            `${primary} 이슈가 동선이나 프로그램 배치와 연결될 수 있으므로, 실제 이용 흐름과 비상 시 이동 흐름이 충돌하지 않는지 확인이 필요합니다.`,
-          checkMethod: "평면도에 일반 동선, 운영 동선, 피난 방향을 구분해 표시하고 병목 구간을 검토합니다.",
-          caution: "피난 적합성은 현행 법규와 전문가 검토로 별도 확인해야 합니다.",
-        },
-        {
-          title: "접근성 및 용도 조건 확인",
-          type: "접근성 / 법규",
-          reason:
-            "프로그램 성격과 이용자 범위가 명확해질수록 접근성, 용도, 운영 기준을 함께 확인해야 설계 논리가 안정됩니다.",
-          checkMethod: "대지 조건, 프로그램 용도, 주요 출입구와 수직 동선을 정리한 뒤 관련 기준 확인 항목을 표시합니다.",
-          caution: "이 항목은 법적 판정이 아니라 설계 검토용 체크리스트입니다.",
-        },
-      ];
+  const scenario = mockScenarioFromText(rawText);
+  const mock = mockScenarioContent(scenario, { project, feedback, topic, primary, categories });
   return {
-    summary: `${feedback.source} 피드백의 핵심은 ${primary} 관점에서 ${topic}의 설계 판단을 도면과 다이어그램으로 검증하라는 것입니다.`,
-    categories,
-    designIssue: diagnosis,
-    designDiagnosis: diagnosis,
-    whyItMatters,
+    isRelevantToArchitecture: true,
+    relevanceMessage: "건축 설계 크리틱과 관련된 피드백으로 판단했습니다.",
+    summary: mock.summary,
+    categories: uniqueStrings([...mock.categories, ...categories]).slice(0, 5),
+    designIssue: mock.designDiagnosis,
+    designDiagnosis: mock.designDiagnosis,
+    whyItMatters: mock.whyItMatters,
+    reviewCriteria: mock.reviewCriteria,
+    actionItems: mock.actionItems,
+    drawingTasks: mock.drawingTasks,
+    diagramTasks: mock.diagramTasks,
+    nextCriticChecklist: uniqueStrings([
+      ...mock.reviewCriteria,
+      ...mock.drawingTasks,
+      ...mock.diagramTasks,
+      "다음 질문에 답할 수 있는 짧은 발표 문장",
+    ]).slice(0, 10),
+    presentationLines: mock.presentationLines,
+    portfolioNarrative: mock.portfolioNarrative,
+    riskChecks: mock.riskChecks,
+    riskQuestions: mock.riskQuestions,
+  };
+}
+
+function mockScenarioFromText(text) {
+  const source = String(text || "");
+  if (/옥상정원|일사|열환경|열\b|환기|방수|유지관리|환경|에너지/i.test(source)) return "environment";
+  if (/입면|매스|수평창|프라이버시|외부\s*시선|외부시선|시선|파사드|개구부/i.test(source)) return "facade";
+  if (/동선|램프|공적|사적|평면|프로그램|영역|진입|이동/i.test(source)) return "movement";
+  return "default";
+}
+
+function mockScenarioContent(scenario, context) {
+  switch (scenario) {
+    case "movement":
+      return mockMovementAnalysis(context);
+    case "environment":
+      return mockEnvironmentAnalysis(context);
+    case "facade":
+      return mockFacadeAnalysis(context);
+    default:
+      return mockDefaultAnalysis(context);
+  }
+}
+
+function mockMovementAnalysis({ feedback, topic }) {
+  const designDiagnosis =
+    "피드백은 동선과 프로그램의 관계가 평면에서 충분히 읽히지 않는 문제를 가리킵니다. 공적 영역과 사적 영역, 중심 공간과 주변 프로그램의 위계가 도면에서 분명하지 않으면 공간 경험이 설명보다 약해질 수 있습니다.";
+  const drawingTasks = [
+    "평면도에 주요 진입 동선, 반복 이용 동선, 서비스 동선을 서로 다른 선형으로 표시한다.",
+    "공적 영역, 공유 영역, 사적 영역을 색상 또는 해치로 구분한다.",
+    "중심 공간과 각 프로그램이 만나는 지점에 머무름, 통과, 충돌 가능성을 주석으로 표시한다.",
+  ];
+  const diagramTasks = [
+    "사용자 유형별 동선 다이어그램을 작성한다.",
+    "프로그램 관계 다이어그램에서 중심 공간과 주변 프로그램의 연결 강도를 표시한다.",
+    "공적/사적 영역 위계 다이어그램을 만든다.",
+  ];
+  return {
+    summary: `${feedback.source} 피드백은 ${topic}에서 동선, 평면, 프로그램 위계를 다시 검증하라는 내용입니다.`,
+    categories: ["동선", "프로그램", "평면", "발표 논리"],
+    designDiagnosis,
+    whyItMatters:
+      "동선과 프로그램 위계가 약하면 사용자가 어디로 들어오고, 어디에 머물고, 어떤 공간으로 이동하는지 설계 의도가 흐려집니다. 다음 크리틱에서는 설명보다 평면과 다이어그램에서 관계가 먼저 읽혀야 합니다.",
     reviewCriteria: [
-      hasVillaSavoyeStudy
-        ? "램프가 단순한 조형 요소가 아니라 실제 생활 동선으로도 작동하는가?"
-        : `${primary} 문제가 도면에서 검토 가능한 기준으로 표시되는가?`,
-      hasVillaSavoyeStudy
-        ? "공적 공간과 사적 공간의 위계가 평면에서 명확하게 읽히는가?"
-        : "개념 설명이 실제 평면, 단면, 매스, 패널 표현으로 연결되는가?",
-      hasVillaSavoyeStudy
-        ? "옥상정원이 상징적 장치에 그치지 않고 실제 거주 경험과 연결되는가?"
-        : "다음 크리틱에서 리뷰어가 같은 도면을 보고 수정 의도를 바로 확인할 수 있는가?",
-      hasVillaSavoyeStudy
-        ? "필로티 하부 공간이 현대적 프로그램으로 재해석될 수 있는가?"
-        : "수정 이후에도 검토 필요로 남겨둘 쟁점이 명확한가?",
-      hasVillaSavoyeStudy
-        ? "빛, 열, 환기 등 환경 성능이 현대 기준에서 보완되었는가?"
-        : "다음 발표에서 유지할 판단과 조정할 판단이 구분되는가?",
+      "주요 사용자 동선이 평면에서 한눈에 구분되는가?",
+      "공적 영역과 사적 영역의 경계가 프로그램 배치와 일치하는가?",
+      "중심 공간이 단순한 빈 공간이 아니라 이동과 머무름을 조직하는 장치로 작동하는가?",
+      "프로그램 간 충돌 지점과 완충 영역이 도면에서 확인되는가?",
     ],
     actionItems: [
       {
-        title: hasVillaSavoyeStudy
-          ? "원작 램프 동선과 현대 생활 동선 비교 다이어그램 작성"
-          : `${primary} 이슈를 한 장의 핵심 도면으로 다시 정리`,
+        title: "사용자 유형별 동선 평면도 작성",
         priority: feedback.importance === "high" ? "high" : "normal",
-        category: hasVillaSavoyeStudy ? "동선" : primary,
-        reason:
-          hasVillaSavoyeStudy
-            ? "빌라 사보아의 건축적 산책로가 현대 주거의 실제 생활 동선과 어떻게 겹치거나 충돌하는지 비교해야 합니다."
-            : "크리틱에서 지적된 문제가 실제 공간 구성에서 어떻게 해결되는지 바로 확인할 수 있어야 합니다.",
-        outputType: hasVillaSavoyeStudy
-          ? "다이어그램"
-          : primary.includes("단면")
-            ? "단면도"
-            : primary.includes("평면")
-              ? "평면도"
-              : "다이어그램",
-        detail: hasVillaSavoyeStudy
-          ? "원작의 램프 동선과 현대 가족의 일상 동선을 같은 기준으로 그려, 이동 길이, 접근성, 반복 사용성, 상징적 경험의 차이를 비교합니다."
-          : "수정 전 도면과 수정 후 도면을 나란히 두고, 바뀐 경계·동선·프로그램 관계를 굵은 선과 짧은 주석으로 표시합니다.",
+        category: "동선",
+        reason: "동선 문제를 말로 설명하지 않고 평면에서 직접 검토할 수 있게 해야 합니다.",
+        outputType: "평면도",
+        detail: "방문자, 거주자, 운영자 또는 서비스 동선을 서로 다른 선으로 그리고, 겹치는 지점과 분리해야 할 지점을 표시합니다.",
       },
       {
-        title: hasVillaSavoyeStudy
-          ? "공적/사적 영역 위계를 평면에 표시"
-          : `${second} 관점의 전후 비교 다이어그램 작성`,
-        priority: hasVillaSavoyeStudy ? "high" : "normal",
-        category: hasVillaSavoyeStudy ? "평면" : second,
-        reason:
-          hasVillaSavoyeStudy
-            ? "현대 주거로 재해석하려면 개방적인 평면 안에서도 가족 공유 영역과 개인 영역의 프라이버시 구조가 읽혀야 합니다."
-            : "피드백 이전과 이후의 판단 변화를 시각적으로 보여주면 설계 발전 과정이 더 선명해집니다.",
-        outputType: hasVillaSavoyeStudy ? "평면도" : "다이어그램 / 패널",
-        detail: hasVillaSavoyeStudy
-          ? "거실, 가족 공유 공간, 개인실, 서비스 공간을 색상 또는 해치로 구분하고, 방문객 동선과 가족 동선이 만나는 지점을 표시합니다."
-          : "문제 지점, 수정 판단, 기대 효과를 3단계로 나누고 각 단계에 대응하는 도면 조각을 함께 배치합니다.",
+        title: "공적/사적 프로그램 위계 다이어그램 작성",
+        priority: "high",
+        category: "프로그램",
+        reason: "프로그램 관계가 약하면 공간의 성격과 이용 흐름이 동시에 흐려집니다.",
+        outputType: "다이어그램",
+        detail: "공적, 공유, 사적 영역을 단계적으로 배열하고 각 영역 사이의 완충 조건을 짧은 주석으로 적습니다.",
       },
       {
-        title: hasVillaSavoyeStudy ? "옥상정원과 필로티 하부의 현대적 프로그램 제안" : "피드백을 반영한 30초 발표 문장 정리",
+        title: "중심 공간과 주변 프로그램 연결 방식 보완",
         priority: "normal",
-        category: hasVillaSavoyeStudy ? "프로그램" : "발표 논리",
-        reason:
-          hasVillaSavoyeStudy
-            ? "원작의 상징적 요소를 유지하면서도 실제 생활과 연결되는 프로그램으로 재해석해야 합니다."
-            : "도면 수정 의도를 말로 압축해 두면 다음 크리틱에서 질문이 들어와도 답변 흐름이 흔들리지 않습니다.",
-        outputType: hasVillaSavoyeStudy ? "단면도 / 프로그램 다이어그램" : "발표문",
-        detail: hasVillaSavoyeStudy
-          ? "필로티 하부에는 현대적 공유 활동이나 진입 완충 기능을, 옥상정원에는 실제 생활 가능한 외부 공간과 환경 성능 보완 전략을 제안합니다."
-          : "문제 진단, 수정 기준, 다음 검토에서 확인받을 점을 각각 한 문장으로 압축합니다.",
+        category: "평면",
+        reason: "중심 공간이 실제 사용 장면을 조직하는지 보여줘야 합니다.",
+        outputType: "평면도 / 발표문",
+        detail: "중심 공간 주변에 사람들이 모이고 흩어지는 장면을 표시하고, 발표에서는 중심 공간의 역할을 한 문장으로 설명합니다.",
       },
     ],
     drawingTasks,
     diagramTasks,
-    nextCriticChecklist: uniqueStrings([
-      ...drawingTasks,
-      ...diagramTasks,
-      "다음 질문에 답할 수 있는 짧은 발표 문장",
-    ]),
     presentationLines: [
-      hasVillaSavoyeStudy
-        ? "이 재해석은 빌라 사보아의 형태를 복제하는 것이 아니라, 건축적 산책로라는 원리를 현대 주거의 생활 동선으로 다시 번역하는 시도입니다."
-        : `이번 수정에서는 ${primary} 문제가 단순한 표현 문제가 아니라 설계 구조의 문제라고 보고, 도면과 발표 논리를 함께 조정했습니다.`,
-      hasVillaSavoyeStudy
-        ? "원작의 필로티와 옥상정원은 유지하되, 오늘날의 거주성, 프라이버시, 환경 성능을 보완하는 방향으로 프로그램 위계를 재구성했습니다."
-        : "피드백을 반영해 프로그램, 동선, 공간 경험이 서로 분리되지 않도록 다시 연결했습니다.",
-      hasVillaSavoyeStudy
-        ? "중요한 것은 명작의 이미지를 따라가는 것이 아니라, 그 작품이 제안했던 공간적 질문을 현재의 생활 조건에서 다시 묻는 것입니다."
-        : "다음 크리틱에서는 수정한 판단이 어떤 산출물에서 검증되는지 순서대로 보여주겠습니다.",
+      "이번 수정은 동선을 더 복잡하게 만드는 것이 아니라, 프로그램 간 관계가 평면에서 먼저 읽히도록 정리하는 데 초점을 두었습니다.",
+      "중심 공간은 장식적 요소가 아니라 사용자가 모이고 이동하는 흐름을 조직하는 장치로 재정의했습니다.",
     ],
     portfolioNarrative:
-      hasVillaSavoyeStudy
-        ? "초기안은 빌라 사보아의 상징적 요소를 인용하는 데 머물렀지만, 크리틱 이후 램프, 필로티, 옥상정원을 현대 주거의 생활 동선, 프라이버시, 환경 성능과 연결하는 방향으로 발전했다."
-        : "초기안은 개념 설명에 비해 도면에서 설계 판단이 충분히 드러나지 않았다. 크리틱 이후 피드백을 작업 단위로 나누고, 핵심 도면과 발표 논리를 함께 수정하면서 설계의 변화 과정이 더 읽히도록 발전시켰다.",
-    riskChecks,
+      "초기안은 프로그램과 동선의 관계가 느슨했지만, 크리틱 이후 사용자 흐름과 공적/사적 위계를 평면과 다이어그램으로 정리하면서 공간 논리가 더 명확해졌다.",
+    riskChecks: [
+      {
+        title: "동선 충돌과 피난 흐름 검토",
+        type: "피난 / 운영",
+        reason: "일상 동선과 비상 시 이동 흐름이 같은 병목 지점에 집중될 수 있습니다.",
+        checkMethod: "평면도에 일반 동선, 운영 동선, 피난 방향을 함께 표시하고 병목 구간을 표시합니다.",
+        caution: "피난 적합성은 현행 법규와 전문가 검토로 별도 확인해야 합니다.",
+      },
+      {
+        title: "공적/사적 영역 접근성 확인",
+        type: "접근성 / 운영",
+        reason: "공적 영역과 사적 영역의 경계가 모호하면 접근 통제와 이용 경험이 충돌할 수 있습니다.",
+        checkMethod: "출입구, 공용 복도, 수직 동선, 사적 영역 진입부를 평면에서 함께 확인합니다.",
+        caution: "이 항목은 법적 판정이 아니라 설계 검토용 체크리스트입니다.",
+      },
+    ],
     riskQuestions: [
-      hasVillaSavoyeStudy ? "원작의 어떤 가치를 유지하고, 어떤 부분을 현대적으로 바꾸려는가?" : "이 수정이 실제 공간 경험에서는 어떤 장면으로 드러나는가?",
-      hasVillaSavoyeStudy ? "램프는 여전히 중심 동선인가, 아니면 상징적 장치인가?" : "기존 안과 비교했을 때 가장 크게 달라진 설계 판단은 무엇인가?",
-      hasVillaSavoyeStudy ? "현대 주거에서 프라이버시는 어떻게 확보되는가?" : "다음 크리틱에서 검토 필요로 남겨둘 쟁점은 무엇인가?",
-      hasVillaSavoyeStudy ? "필로티 하부 공간은 오늘날 어떤 프로그램으로 활용되는가?" : "발표에서 먼저 보여줄 산출물은 무엇인가?",
-      hasVillaSavoyeStudy ? "옥상정원은 실제 생활 공간으로 작동하는가?" : "아직 단정하지 않고 검토 필요로 남겨둘 부분은 무엇인가?",
+      "사용자는 어디에서 들어와 어떤 순서로 프로그램을 경험하는가?",
+      "공적 영역과 사적 영역은 어디서 분리되거나 만나는가?",
+      "중심 공간은 실제 사용 흐름을 조직하는가?",
+    ],
+  };
+}
+
+function mockEnvironmentAnalysis({ feedback, topic }) {
+  const designDiagnosis =
+    "피드백은 옥상정원, 일사, 환기, 열환경 같은 환경 장치가 공간 경험과 단면 구성으로 충분히 번역되지 않은 문제를 가리킵니다. 환경 전략이 좋은 아이디어로만 남지 않도록 단면, 디테일, 유지관리 흐름에서 검증해야 합니다.";
+  const drawingTasks = [
+    "단면도에 일사, 환기, 열 이동, 외부 공간의 관계를 화살표와 주석으로 표시한다.",
+    "옥상정원 또는 외부 데크가 있다면 방수, 배수, 난간, 접근 동선을 평면과 단면에 함께 표시한다.",
+    "환경 성능을 담당하는 벽체, 개구부, 완충 공간의 위치를 도면 범례로 정리한다.",
+  ];
+  const diagramTasks = [
+    "계절별 일사와 환기 흐름 다이어그램을 만든다.",
+    "옥상정원 또는 외부 공간의 이용, 유지관리, 안전 경계 다이어그램을 만든다.",
+    "열환경 완충 전략을 실내/외부 공간 관계로 단순화해 표현한다.",
+  ];
+  return {
+    summary: `${feedback.source} 피드백은 ${topic}의 환경 전략을 단면, 유지관리, 실제 사용 장면으로 검증하라는 내용입니다.`,
+    categories: ["환경", "단면", "설비", "시공"],
+    designDiagnosis,
+    whyItMatters:
+      "환경 전략은 설계 개념을 강화할 수 있지만, 도면에서 작동 방식과 유지관리 조건이 보이지 않으면 장식적 설명처럼 보입니다. 특히 외부 공간과 지붕, 열·환기 전략은 안전, 방수, 운영 계획과 함께 제시되어야 설득력이 생깁니다.",
+    reviewCriteria: [
+      "환경 장치가 단면에서 실제 공기, 빛, 열 흐름으로 읽히는가?",
+      "옥상정원이나 외부 공간의 접근, 안전, 방수, 유지관리 조건이 표시되는가?",
+      "환경 전략이 공간 경험과 프로그램 운영을 동시에 보완하는가?",
+      "계절별 또는 시간대별 변화가 다이어그램으로 설명되는가?",
+    ],
+    actionItems: [
+      {
+        title: "환경 흐름을 표시한 핵심 단면 작성",
+        priority: "high",
+        category: "단면",
+        reason: "환경 전략은 평면보다 단면에서 작동 방식이 더 분명하게 검증됩니다.",
+        outputType: "단면도",
+        detail: "일사, 열, 환기, 외부 공간의 관계를 같은 단면에 표시하고, 어떤 공간이 완충 역할을 하는지 주석을 붙입니다.",
+      },
+      {
+        title: "옥상정원 유지관리 조건 다이어그램 작성",
+        priority: feedback.importance === "high" ? "high" : "normal",
+        category: "환경",
+        reason: "옥상정원이 실제 사용 공간이라면 안전과 유지관리 조건이 함께 제시되어야 합니다.",
+        outputType: "다이어그램 / 단면 상세",
+        detail: "이용 범위, 관리 동선, 방수·배수 고려 지점, 안전 경계를 분리해 표시합니다.",
+      },
+      {
+        title: "계절별 일사·환기 전략 발표 문장 정리",
+        priority: "normal",
+        category: "발표 논리",
+        reason: "환경 전략은 어떤 계절과 사용 조건에서 효과가 있는지 말로도 정리되어야 합니다.",
+        outputType: "발표문",
+        detail: "여름, 겨울, 중간기 조건에서 빛과 공기 흐름이 어떻게 달라지는지 2~3문장으로 압축합니다.",
+      },
+    ],
+    drawingTasks,
+    diagramTasks,
+    presentationLines: [
+      "환경 전략은 형태의 부가 요소가 아니라 단면에서 빛, 열, 공기 흐름을 조정하는 공간 장치로 정리했습니다.",
+      "옥상정원은 상징적 외부 공간을 넘어 접근, 안전, 방수, 유지관리 조건까지 함께 검토하는 방향으로 보완했습니다.",
+    ],
+    portfolioNarrative:
+      "크리틱 이후 환경 전략은 추상적 컨셉에서 단면과 유지관리 조건으로 구체화되었고, 외부 공간과 실내 경험을 연결하는 설계 장치로 발전했다.",
+    riskChecks: [
+      {
+        title: "방수·배수 및 유지관리 검토",
+        type: "시공 / 운영",
+        reason: "옥상정원과 외부 공간은 사용성뿐 아니라 방수, 배수, 점검 동선이 설계 성립에 영향을 줍니다.",
+        checkMethod: "옥상 평면과 단면에 배수 방향, 관리 접근, 방수층 고려 지점을 표시합니다.",
+        caution: "구체적인 적합성은 구조·시공 전문가와 현행 기준으로 확인해야 합니다.",
+      },
+      {
+        title: "환기와 열환경 기준 확인",
+        type: "환경 / 설비",
+        reason: "자연환기나 열 완충 전략이 실제 실내 환경 개선으로 이어지는지 검토가 필요합니다.",
+        checkMethod: "단면과 환경 다이어그램에 유입, 배출, 차양, 완충 공간을 함께 표시합니다.",
+        caution: "이 앱은 성능 계산을 하지 않으며 검토 항목만 제안합니다.",
+      },
+    ],
+    riskQuestions: [
+      "환경 전략은 단면에서 어떻게 작동하는가?",
+      "옥상정원이나 외부 공간은 누가 어떻게 관리하는가?",
+      "일사, 환기, 열환경 전략은 계절별로 어떻게 달라지는가?",
+    ],
+  };
+}
+
+function mockFacadeAnalysis({ feedback, topic }) {
+  const designDiagnosis =
+    "피드백은 입면과 매스가 외부 이미지로는 보이지만, 내부 프로그램, 프라이버시, 채광 조건과 충분히 연결되지 않은 문제를 가리킵니다. 수평창, 개구부, 외부 시선, 매스 분절이 공간 사용 논리와 함께 설명되어야 합니다.";
+  const drawingTasks = [
+    "입면도에 수평창, 개구부, 차폐 요소와 내부 프로그램의 대응 관계를 표시한다.",
+    "매스 분절이 공적 공간, 사적 공간, 서비스 공간과 어떻게 연결되는지 평면과 입면을 나란히 비교한다.",
+    "외부 시선이 들어오는 방향과 프라이버시 보호가 필요한 영역을 도면에 표시한다.",
+  ];
+  const diagramTasks = [
+    "외부 시선과 프라이버시 레이어 다이어그램을 만든다.",
+    "입면 개구부와 내부 프로그램 관계 다이어그램을 만든다.",
+    "매스 분절과 채광 방향을 함께 보여주는 다이어그램을 만든다.",
+  ];
+  return {
+    summary: `${feedback.source} 피드백은 ${topic}의 입면, 매스, 프라이버시 조건을 공간 사용 논리와 연결하라는 내용입니다.`,
+    categories: ["입면", "매스", "평면", "환경"],
+    designDiagnosis,
+    whyItMatters:
+      "입면과 매스가 내부 사용 방식과 연결되지 않으면 형태적 인상은 남아도 설계 논리는 약해집니다. 특히 주거나 커뮤니티 공간에서는 외부 시선, 채광, 프라이버시가 평면과 입면에서 동시에 검토되어야 합니다.",
+    reviewCriteria: [
+      "입면의 개구부가 내부 프로그램과 대응되는가?",
+      "수평창이나 큰 개구부가 채광과 프라이버시를 동시에 설명하는가?",
+      "매스 분절이 공간 위계와 사용 장면을 반영하는가?",
+      "외부 시선과 내부 사적 영역의 관계가 도면에서 확인되는가?",
+    ],
+    actionItems: [
+      {
+        title: "입면 개구부와 내부 프로그램 대응표 작성",
+        priority: "high",
+        category: "입면",
+        reason: "입면 표현이 내부 공간 사용과 연결되는지 검토해야 합니다.",
+        outputType: "입면도 / 다이어그램",
+        detail: "입면 위에 내부 프로그램 위치를 겹쳐 표시하고, 개구부가 필요한 이유를 채광, 조망, 프라이버시 기준으로 구분합니다.",
+      },
+      {
+        title: "외부 시선과 프라이버시 레이어 표시",
+        priority: feedback.importance === "high" ? "high" : "normal",
+        category: "평면",
+        reason: "프라이버시 문제는 입면뿐 아니라 평면의 영역 배치와 함께 검토해야 합니다.",
+        outputType: "평면도 / 입면도",
+        detail: "외부 시선 방향, 완충 공간, 차폐 요소, 사적 영역을 같은 도면 세트에서 표시합니다.",
+      },
+      {
+        title: "매스 분절과 채광 전략 다이어그램 작성",
+        priority: "normal",
+        category: "매스",
+        reason: "매스 조정이 조형적 선택이 아니라 빛과 공간 위계를 만드는 판단임을 보여줘야 합니다.",
+        outputType: "매스 검토 / 다이어그램",
+        detail: "매스 분절 전후를 비교하고, 채광 방향과 내부 주요 공간의 관계를 화살표로 표시합니다.",
+      },
+    ],
+    drawingTasks,
+    diagramTasks,
+    presentationLines: [
+      "입면은 외부 이미지가 아니라 내부 프로그램, 채광, 프라이버시 조건이 밖으로 드러나는 결과로 다시 정리했습니다.",
+      "매스 분절은 조형적 변화가 아니라 외부 시선과 내부 사용 영역을 조정하기 위한 설계 판단입니다.",
+    ],
+    portfolioNarrative:
+      "크리틱 이후 입면과 매스는 독립된 형태 표현에서 벗어나, 내부 프로그램과 프라이버시·채광 조건을 조정하는 설계 논리로 발전했다.",
+    riskChecks: [
+      {
+        title: "개구부와 프라이버시 검토",
+        type: "환경 / 운영",
+        reason: "큰 창이나 수평창은 채광에는 유리하지만 외부 시선과 사적 영역 노출을 동시에 만들 수 있습니다.",
+        checkMethod: "입면도와 평면도에 외부 시선 방향, 개구부 높이, 사적 영역 위치를 함께 표시합니다.",
+        caution: "프라이버시와 채광 성능은 대지 조건과 주변 맥락에 따라 추가 검토가 필요합니다.",
+      },
+      {
+        title: "일조·높이·인접 대지 영향 확인",
+        type: "법규 / 환경",
+        reason: "매스와 입면 변경은 일조, 높이 제한, 인접 대지 관계에 영향을 줄 수 있습니다.",
+        checkMethod: "매스 모델과 배치도에서 인접 대지, 높이, 그림자 방향을 검토합니다.",
+        caution: "정확한 적합성은 최신 법령과 지자체 조례로 확인해야 합니다.",
+      },
+    ],
+    riskQuestions: [
+      "입면의 개구부는 내부 프로그램과 어떤 관계가 있는가?",
+      "프라이버시가 필요한 공간은 외부 시선으로부터 어떻게 보호되는가?",
+      "매스 조정은 채광과 공간 위계를 어떻게 바꾸는가?",
+    ],
+  };
+}
+
+function mockDefaultAnalysis({ feedback, topic, primary }) {
+  const designDiagnosis =
+    "피드백은 설계 의도와 실제 산출물 사이의 연결이 약한 지점을 가리킵니다. 개념, 공간 구성, 표현 방식이 같은 기준으로 정렬되어야 다음 크리틱에서 수정 방향이 명확해집니다.";
+  const drawingTasks = [
+    `${primary} 쟁점이 드러나는 핵심 도면을 한 장 선택해 수정 전후를 비교한다.`,
+    "문제가 되는 영역과 수정한 영역을 도면 범례로 표시한다.",
+  ];
+  const diagramTasks = [
+    "피드백 이전과 이후의 설계 판단 변화를 한 장의 전후 비교 다이어그램으로 정리한다.",
+    "개념, 공간 구성, 발표 논리의 관계를 간단한 흐름도로 표시한다.",
+  ];
+  return {
+    summary: `${feedback.source} 피드백의 핵심은 ${primary} 관점에서 ${topic}의 설계 판단을 도면과 다이어그램으로 검증하라는 것입니다.`,
+    categories: [primary, "표현 / 패널", "발표 논리"],
+    designDiagnosis,
+    whyItMatters:
+      "설계 문제의 원인이 도면에서 검증되지 않으면 크리틱은 형태 취향이나 표현 방식의 논쟁으로 흐르기 쉽습니다. 다음 검토 전에는 어떤 산출물에서 어떤 판단을 확인할 수 있는지 명확히 해야 합니다.",
+    reviewCriteria: [
+      `${primary} 문제가 도면에서 검토 가능한 기준으로 표시되는가?`,
+      "개념 설명이 실제 평면, 단면, 매스, 패널 표현으로 연결되는가?",
+      "다음 크리틱에서 리뷰어가 같은 도면을 보고 수정 의도를 바로 확인할 수 있는가?",
+      "수정 이후에도 검토 필요로 남겨둘 쟁점이 명확한가?",
+    ],
+    actionItems: [
+      {
+        title: `${primary} 이슈를 한 장의 핵심 도면으로 다시 정리`,
+        priority: feedback.importance === "high" ? "high" : "normal",
+        category: primary,
+        reason: "크리틱에서 지적된 문제가 실제 공간 구성에서 어떻게 해결되는지 바로 확인할 수 있어야 합니다.",
+        outputType: primary.includes("단면") ? "단면도" : primary.includes("평면") ? "평면도" : "다이어그램",
+        detail: "수정 전 도면과 수정 후 도면을 나란히 두고, 바뀐 경계·동선·프로그램 관계를 굵은 선과 짧은 주석으로 표시합니다.",
+      },
+      {
+        title: "피드백 전후 비교 다이어그램 작성",
+        priority: "normal",
+        category: "표현 / 패널",
+        reason: "수정 판단의 변화가 시각적으로 보여야 설계 발전 과정이 선명해집니다.",
+        outputType: "다이어그램 / 패널",
+        detail: "문제 지점, 수정 판단, 기대 효과를 3단계로 나누고 각 단계에 대응하는 도면 조각을 함께 배치합니다.",
+      },
+      {
+        title: "피드백을 반영한 30초 발표 문장 정리",
+        priority: "normal",
+        category: "발표 논리",
+        reason: "도면 수정 의도를 말로 압축해 두면 다음 크리틱에서 질문이 들어와도 답변 흐름이 흔들리지 않습니다.",
+        outputType: "발표문",
+        detail: "문제 진단, 수정 기준, 다음 검토에서 확인받을 점을 각각 한 문장으로 압축합니다.",
+      },
+    ],
+    drawingTasks,
+    diagramTasks,
+    presentationLines: [
+      `이번 수정에서는 ${primary} 문제가 단순한 표현 문제가 아니라 설계 구조의 문제라고 보고, 도면과 발표 논리를 함께 조정했습니다.`,
+      "다음 크리틱에서는 수정한 판단이 어떤 산출물에서 검증되는지 순서대로 보여주겠습니다.",
+    ],
+    portfolioNarrative:
+      "초기안은 개념 설명에 비해 도면에서 설계 판단이 충분히 드러나지 않았다. 크리틱 이후 피드백을 작업 단위로 나누고, 핵심 도면과 발표 논리를 함께 수정하면서 설계의 변화 과정이 더 읽히도록 발전시켰다.",
+    riskChecks: [
+      {
+        title: "기본 이용 동선과 안전 검토",
+        type: "운영 / 피난",
+        reason: "설계 쟁점이 구체화되면 이용 흐름과 비상 시 이동 흐름도 함께 확인해야 합니다.",
+        checkMethod: "핵심 평면에 일반 동선, 출입구, 계단 또는 피난 방향을 표시합니다.",
+        caution: "이 항목은 법적 판정이 아니라 추가 확인이 필요한 체크리스트입니다.",
+      },
+      {
+        title: "대지 조건과 용도 기준 확인",
+        type: "법규 / 기타",
+        reason: "프로젝트 용도와 대지 조건이 설계 방향에 영향을 줄 수 있습니다.",
+        checkMethod: "대지 정보, 프로그램 용도, 주요 면적 조건을 정리한 뒤 관련 기준을 확인합니다.",
+        caution: "정확한 적합성은 최신 법령, 지자체 조례, 전문가 검토로 확인해야 합니다.",
+      },
+    ],
+    riskQuestions: [
+      "이 수정이 실제 공간 경험에서는 어떤 장면으로 드러나는가?",
+      "기존 안과 비교했을 때 가장 크게 달라진 설계 판단은 무엇인가?",
+      "다음 크리틱에서 검토 필요로 남겨둘 쟁점은 무엇인가?",
     ],
   };
 }
@@ -3299,17 +3899,64 @@ function clearStorage() {
   showToast("localStorage 데이터를 초기화했습니다.");
 }
 
-function setBusy(nextBusy) {
+function setBusy(nextBusy, message = "") {
   isBusy = nextBusy;
-  const buttons = [
-    els.analyzeBtn,
-    els.criticPrepBtn,
-    els.portfolioBtn,
+  isAnalyzing = nextBusy;
+  analyzingMessage = nextBusy
+    ? message || "설계 진단, 작업 카드, 법규/검토 리스크를 정리하는 중입니다."
+    : "";
+  renderBusyState();
+}
+
+function setAnalyzingStep(message) {
+  if (!isAnalyzing) return;
+  analyzingMessage = message || analyzingMessage;
+  renderBusyState();
+}
+
+function renderBusyState() {
+  if (els.analysisLoadingOverlay) {
+    els.analysisLoadingOverlay.classList.toggle("is-hidden", !isAnalyzing);
+    els.analysisLoadingOverlay.setAttribute("aria-hidden", isAnalyzing ? "false" : "true");
+  }
+  if (els.analysisLoadingMessage) {
+    els.analysisLoadingMessage.textContent =
+      analyzingMessage || "설계 진단, 작업 카드, 법규/검토 리스크를 정리하는 중입니다. 잠시만 기다려주세요.";
+  }
+
+  const feedbackSubmit = els.feedbackForm?.querySelector("button[type='submit']");
+  setButtonBusy(feedbackSubmit, isBusy, "분석 중...");
+  setButtonBusy(els.analyzeBtn, isBusy, "분석 중...");
+  setButtonBusy(els.criticPrepBtn, isBusy, "생성 중...");
+  setButtonBusy(els.portfolioBtn, isBusy, "생성 중...");
+
+  [
     els.deleteProjectBtn,
-    els.feedbackForm.querySelector("button[type='submit']"),
-  ];
-  buttons.forEach((button) => {
+    els.newProjectBtn,
+    ...document.querySelectorAll('[data-feedback-action="delete"], [data-analysis-action="delete-feedback"]'),
+  ].forEach((button) => {
     if (button) button.disabled = isBusy;
+  });
+
+  document
+    .querySelectorAll('[data-feedback-action="reanalyze"], [data-analysis-action="reanalyze"]')
+    .forEach((button) => setButtonBusy(button, isBusy, "처리 중..."));
+
+  renderAiMode();
+}
+
+function setButtonBusy(button, busy, busyText) {
+  if (!button) return;
+  if (!button.dataset.defaultText) {
+    button.dataset.defaultText = button.textContent.trim();
+  }
+  button.disabled = busy;
+  button.textContent = busy ? busyText : button.dataset.defaultText;
+}
+
+function waitForPaint() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
   });
 }
 

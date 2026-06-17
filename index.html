@@ -331,8 +331,9 @@
                 <aside class="feedback-example-card" aria-label="첫 피드백 예시">
                   <div>
                     <h3>처음이라면 이런 식으로 입력해보세요</h3>
-                    <p>교수님이나 팀원에게 들은 말을 완벽히 정리하지 않아도 됩니다. 기억나는 문장을 그대로 붙여넣으면 AI가 설계 진단과 작업 카드로 정리합니다.</p>
+                    <p>크리틱에서 들은 말을 문장으로 다듬으려고 하지 않아도 됩니다. 기억나는 표현을 그대로 적으면 AI가 설계 진단, 검토 기준, 작업 카드로 정리합니다.</p>
                   </div>
+                  <span class="feedback-example-label">예시 피드백</span>
                   <p class="feedback-example-quote" id="feedbackExampleText">동선은 흥미롭지만 프로그램 간 관계가 평면에서 명확하게 읽히지 않는다. 중심 공간이 좋은 장치처럼 보이지만 실제로 사람들이 어떻게 모이고 이동하는지 더 구체적으로 보여줘야 한다. 조용한 공간과 활동적인 공간의 경계도 단면이나 배치에서 더 분명히 드러나면 좋겠다.</p>
                   <button class="secondary icon-button icon-feedback" id="firstFeedbackExampleBtn" type="button">예시를 입력창에 넣기</button>
                 </aside>
@@ -565,6 +566,17 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="analysisLoadingOverlay" class="analysis-loading-overlay is-hidden" aria-hidden="true">
+      <div class="analysis-loading-card" role="status" aria-live="polite">
+        <span class="analysis-loading-spinner" aria-hidden="true"></span>
+        <div>
+          <p class="analysis-loading-title">AI가 피드백을 분석하고 있습니다</p>
+          <p class="analysis-loading-message" id="analysisLoadingMessage">
+            설계 진단, 작업 카드, 법규/검토 리스크를 정리하는 중입니다. 잠시만 기다려주세요.
+          </p>
+        </div>
+      </div>
+    </div>
     <script defer src="./src/app.js"></script>
   </body>
 </html>
