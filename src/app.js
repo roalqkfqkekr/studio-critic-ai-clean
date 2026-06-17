@@ -8,6 +8,24 @@ const AI_INIT_TIMEOUT_MS = 10000;
 const AI_GENERATE_TIMEOUT_MS = 45000;
 const CONFIG_URL = new URL("./src/firebaseConfig.js", window.location.href).href;
 const START_TEMPLATE_HASH = "#/start/template";
+const FEEDBACK_EXAMPLES = {
+  graduation:
+    "컨셉은 흥미롭지만 평면과 단면에서 그 개념이 어떻게 공간으로 이어지는지 아직 명확하지 않다. 프로그램 배치와 동선이 주제와 연결되도록 다이어그램과 도면에서 더 분명하게 보여줘야 한다.",
+  competition:
+    "아이디어는 명확하지만 심사 기준에서 요구하는 공공성, 실현 가능성, 제출물 구성과 어떻게 연결되는지 약하다. 핵심 개념을 한 장의 패널에서 바로 이해할 수 있도록 도면, 다이어그램, 설명 문장의 위계를 정리해야 한다.",
+  studio:
+    "동선은 흥미롭지만 프로그램 간 관계가 평면에서 명확하게 읽히지 않는다. 중심 공간이 좋은 장치처럼 보이지만 실제로 사람들이 어떻게 모이고 이동하는지 더 구체적으로 보여줘야 한다.",
+  portfolio:
+    "프로젝트 결과물은 정리되어 있지만 설계가 어떻게 발전했는지 과정이 잘 드러나지 않는다. 초기 문제의식, 주요 피드백, 변경 방향, 최종 설계 논리를 하나의 서사로 연결해야 한다.",
+  renovation:
+    "기존 공간의 문제점은 보이지만 어떤 부분을 유지하고 어떤 부분을 바꾸는지 기준이 약하다. 현황 분석, 사용자 불편, 개선 전략이 평면과 다이어그램에서 더 명확하게 연결되어야 한다.",
+  urbanInfra:
+    "도시적 문제의식은 좋지만 대지 맥락, 보행 흐름, 프로그램 배치, 시스템 작동 방식이 서로 따로 보인다. 도시 스케일의 흐름과 건축 내부 프로그램이 어떻게 연결되는지 단계적으로 보여줘야 한다.",
+  default:
+    "교수님이나 팀원에게 들은 말을 완벽히 정리하지 않아도 됩니다. 기억나는 문장을 그대로 붙여넣으면 AI가 설계 진단과 작업 카드로 정리합니다.",
+};
+const LEGAL_RISK_NOTICE =
+  "이 항목은 법적 판정이 아니라 설계 검토용 체크리스트입니다. 실제 인허가 및 적합성은 최신 법령, 지자체 조례, 토지이음, 세움터, 전문가 검토로 확인하세요.";
 
 const CATEGORIES = [
   "컨셉",
@@ -171,6 +189,8 @@ const els = {
   feedbackImportance: $("feedbackImportance"),
   feedbackKeywords: $("feedbackKeywords"),
   feedbackText: $("feedbackText"),
+  feedbackExampleText: $("feedbackExampleText"),
+  firstFeedbackExampleBtn: $("firstFeedbackExampleBtn"),
   inputLength: $("inputLength"),
   feedbackTimeline: $("feedbackTimeline"),
   analysisCard: $("analysisCard"),
@@ -267,6 +287,7 @@ function bindEvents() {
   els.projectForm.addEventListener("submit", handleProjectSubmit);
   els.feedbackForm.addEventListener("submit", handleFeedbackSubmit);
   els.feedbackText.addEventListener("input", renderInputLength);
+  els.firstFeedbackExampleBtn?.addEventListener("click", fillFirstFeedbackExample);
   els.projectList.addEventListener("click", handleProjectListClick);
   els.feedbackTimeline.addEventListener("click", handleTimelineClick);
   els.analysisCard.addEventListener("click", handleAnalysisCardClick);
@@ -568,6 +589,7 @@ function formatAnalysisForCopy(analysis, feedback) {
     copyBlock("설계 진단", diagnosis),
     copyBlock("왜 중요한가", analysis.whyItMatters),
     copyListBlock("검토 기준", analysis.reviewCriteria),
+    copyRiskChecksBlock("법규/검토 리스크", analysis.riskChecks),
     copyListBlock("도면 작업", analysis.drawingTasks),
     copyListBlock("다이어그램 작업", analysis.diagramTasks),
     copyListBlock("예상 질문", analysis.riskQuestions),
@@ -697,6 +719,9 @@ function formatFeedbacksForMarkdown(feedbacks) {
         "검토 기준:",
         markdownList(analysis.reviewCriteria),
         "",
+        "법규/검토 리스크:",
+        markdownRiskChecks(analysis.riskChecks),
+        "",
         "도면 작업:",
         markdownList(analysis.drawingTasks),
         "",
@@ -791,6 +816,22 @@ function markdownList(items, options = {}) {
   return list.map((item, index) => (options.numbered ? `${index + 1}. ${item}` : `- ${item}`)).join("\n");
 }
 
+function markdownRiskChecks(items) {
+  const checks = normalizeRiskChecks(items);
+  if (!checks.length) return "관련 리스크 항목이 없습니다.";
+  return checks
+    .map((item) =>
+      [
+        `- 제목: ${markdownValue(item.title)}`,
+        `  - 유형: ${markdownValue(item.type)}`,
+        `  - 이유: ${markdownValue(item.reason)}`,
+        `  - 확인 방법: ${markdownValue(item.checkMethod)}`,
+        `  - 주의: ${markdownValue(item.caution)}`,
+      ].join("\n"),
+    )
+    .join("\n");
+}
+
 function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -812,6 +853,20 @@ function copyListBlock(title, items, options = {}) {
   const lines = list.length
     ? list.map((item, index) => (options.numbered ? `${index + 1}. ${item}` : `- ${item}`))
     : ["- 없음"];
+  return [`[${title}]`, ...lines].join("\n");
+}
+
+function copyRiskChecksBlock(title, items) {
+  const checks = normalizeRiskChecks(items);
+  const lines = checks.length
+    ? checks.flatMap((item) => [
+        `- 제목: ${item.title}`,
+        `  유형: ${item.type || "기타"}`,
+        `  이유: ${item.reason || "확인 필요"}`,
+        `  확인 방법: ${item.checkMethod || "관련 도면과 기준으로 확인 필요"}`,
+        `  주의: ${item.caution || "법적 판정이 아니라 추가 확인이 필요한 항목입니다."}`,
+      ])
+    : ["- 관련 리스크 항목이 없습니다."];
   return [`[${title}]`, ...lines].join("\n");
 }
 
@@ -845,6 +900,7 @@ function emptyAnalysis() {
     presentationLines: [],
     portfolioNarrative: "",
     riskQuestions: [],
+    riskChecks: [],
   };
 }
 
@@ -964,6 +1020,24 @@ function sampleAnalysis() {
     ],
     portfolioNarrative:
       "초기안은 빌라 사보아의 상징적 요소를 인용하는 데 머물렀지만, 크리틱 이후 램프, 필로티, 옥상정원을 현대 주거의 생활 동선, 프라이버시, 환경 성능과 연결하는 방향으로 발전했다.",
+    riskChecks: [
+      {
+        title: "현대 주거 기준의 접근성 검토",
+        type: "접근성",
+        reason:
+          "램프가 건축적 산책로로 작동하지만, 실제 이동 약자 접근성과 생활 동선으로도 적절한지 확인할 필요가 있다.",
+        checkMethod: "평면과 단면에서 진입부, 램프 경사, 수직 이동 동선을 함께 표시한다.",
+        caution: "정확한 적합성은 관련 법규와 현행 기준을 별도로 확인해야 한다.",
+      },
+      {
+        title: "옥상정원의 안전 및 유지관리 검토",
+        type: "운영 / 안전",
+        reason:
+          "옥상정원이 실제 생활 공간으로 사용될 경우 난간, 방수, 유지관리, 피난과 관련된 검토가 필요하다.",
+        checkMethod: "단면도와 옥상 평면에 이용 범위, 접근 동선, 안전 경계, 관리 동선을 표시한다.",
+        caution: "이 앱은 법적 판정이 아니라 검토 항목만 제안한다.",
+      },
+    ],
     riskQuestions: [
       "원작의 어떤 가치를 유지하고, 어떤 부분을 현대적으로 바꾸려는가?",
       "램프는 여전히 중심 동선인가, 아니면 상징적 장치인가?",
@@ -1106,6 +1180,7 @@ function normalizeAnalysis(analysis) {
     presentationLines: toStringArray(safe.presentationLines),
     portfolioNarrative: stringOr(safe.portfolioNarrative, ""),
     riskQuestions: toStringArray(safe.riskQuestions),
+    riskChecks: normalizeRiskChecks(safe.riskChecks),
   };
 }
 
@@ -1119,6 +1194,30 @@ function normalizeActionItem(item, fallbackCategory = "기타") {
     outputType: stringOr(item?.outputType, ""),
     detail: stringOr(item?.detail, ""),
   };
+}
+
+function normalizeRiskChecks(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      if (typeof item === "string") {
+        return {
+          title: item.trim(),
+          type: "기타",
+          reason: "",
+          checkMethod: "",
+          caution: "법적 판정이 아니라 추가 확인이 필요한 항목입니다.",
+        };
+      }
+      return {
+        title: stringOr(item?.title, "검토 항목"),
+        type: stringOr(item?.type, "기타"),
+        reason: stringOr(item?.reason, ""),
+        checkMethod: stringOr(item?.checkMethod, ""),
+        caution: stringOr(item?.caution, "법적 판정이 아니라 추가 확인이 필요한 항목입니다."),
+      };
+    })
+    .filter((item) => item.title);
 }
 
 function normalizeCriticPlan(plan) {
@@ -1604,6 +1703,7 @@ function renderProjectForm() {
     $("projectConcept").value = "";
     $("projectNotes").value = "";
     els.feedbackText.placeholder = "크리틱에서 들은 말을 그대로 붙여넣으세요.";
+    updateFeedbackExampleGuide(null);
     return;
   }
   setProjectFormDisabled(false);
@@ -1616,6 +1716,7 @@ function renderProjectForm() {
   $("projectConcept").value = project.concept;
   $("projectNotes").value = project.notes;
   els.feedbackText.placeholder = projectFeedbackPlaceholder(project);
+  updateFeedbackExampleGuide(project);
 }
 
 function renderHomeView() {
@@ -1852,6 +1953,11 @@ function renderAnalysisCard() {
     </div>
     <h4>검토 기준</h4>
     ${renderList(analysis.reviewCriteria.length ? analysis.reviewCriteria : analysis.nextCriticChecklist)}
+    <section class="risk-check-section" aria-label="법규/검토 리스크">
+      <h4>법규/검토 리스크</h4>
+      ${renderRiskChecks(analysis.riskChecks)}
+      <p class="risk-check-note">${escapeHtml(LEGAL_RISK_NOTICE)}</p>
+    </section>
     <h4>다음 작업</h4>
     ${renderActionItems(analysis.actionItems)}
     <div class="analysis-grid">
@@ -2077,6 +2183,31 @@ function renderActionItems(items) {
               <strong>${escapeHtml(item.title)}</strong>
               ${item.reason ? `<p>${escapeHtml(item.reason)}</p>` : ""}
               ${item.detail ? `<p class="task-detail">${escapeHtml(item.detail)}</p>` : ""}
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderRiskChecks(items) {
+  const checks = normalizeRiskChecks(items);
+  if (!checks.length) return `<p class="muted list-empty">관련 리스크 항목이 없습니다.</p>`;
+  return `
+    <div class="risk-check-list">
+      ${checks
+        .map(
+          (item) => `
+            <article class="risk-check-card">
+              <div class="tags">
+                <span class="tag">${escapeHtml(item.type || "기타")}</span>
+                <span class="tag">확인 필요</span>
+              </div>
+              <strong>${escapeHtml(item.title)}</strong>
+              ${item.reason ? `<p><b>이유</b>${escapeHtml(item.reason)}</p>` : ""}
+              ${item.checkMethod ? `<p><b>확인 방법</b>${escapeHtml(item.checkMethod)}</p>` : ""}
+              ${item.caution ? `<p><b>주의</b>${escapeHtml(item.caution)}</p>` : ""}
             </article>
           `,
         )
@@ -2553,6 +2684,15 @@ function buildAnalysisPrompt(project, feedback) {
 6. 불확실한 내용은 단정하지 말고 "검토 필요"라고 표시해라.
 7. 결과는 반드시 JSON 객체만 반환해라.
 
+법규/검토 리스크 원칙:
+- 법규를 자동 판정하지 마라.
+- 적법/위법을 단정하지 마라.
+- 사용자가 입력한 정보만으로 확정할 수 없는 법규는 "확인 필요"로 표현해라.
+- 설계 크리틱 관점에서 다음 검토해야 할 법규·피난·접근성·구조·설비·환경 리스크를 짚어라.
+- 실제 인허가 검토는 최신 법령, 지자체 조례, 토지이음, 세움터, 전문가 검토가 필요하다고 안내해라.
+- 법규 항목은 과하게 많이 만들지 말고, 피드백과 관련 있는 2~5개 정도만 제안해라.
+- 이 항목은 법적 판정이 아니라 설계 검토용 체크리스트입니다. 실제 적합성은 최신 법령, 지자체 조례, 토지이음, 세움터, 전문가 검토로 확인해야 합니다.
+
 나쁜 예:
 - "동선 분리가 필요합니다."
 - "매스 디자인 검토가 필요합니다."
@@ -2599,6 +2739,15 @@ JSON 스키마:
   "nextCriticChecklist": ["다음 크리틱에 보여줄 항목"],
   "presentationLines": ["발표 때 사용할 수 있는 문장"],
   "riskQuestions": ["교수나 리뷰어가 다시 물어볼 가능성이 높은 질문"],
+  "riskChecks": [
+    {
+      "title": "검토 항목 제목",
+      "type": "법규 / 피난 / 접근성 / 구조 / 설비 / 환경 / 운영 / 기타",
+      "reason": "왜 이 항목을 확인해야 하는지",
+      "checkMethod": "어떤 자료나 도면으로 확인해야 하는지",
+      "caution": "법적 판정이 아니라 추가 확인이 필요하다는 안내"
+    }
+  ],
   "portfolioNarrative": "포트폴리오에 넣을 수 있는 설계 발전 서사"
 }
 
@@ -2606,6 +2755,7 @@ JSON 스키마:
 - actionItems는 최소 3개를 작성한다.
 - 각 actionItems.detail은 도면/다이어그램/발표문에서 실제로 무엇을 표시하거나 고칠지 말한다.
 - reviewCriteria는 다음 크리틱 때 판단 기준으로 사용할 수 있게 쓴다.
+- riskChecks는 법적 적합성 판정이 아니라 확인해야 할 가능성이 있는 항목만 조심스럽게 쓴다.
 - summary는 짧게, designDiagnosis와 whyItMatters는 더 구체적으로 쓴다.
 
 프로젝트:
@@ -2732,6 +2882,43 @@ function fallbackAnalysis(project, feedback) {
         "피드백 이전과 이후의 설계 판단 변화를 한 장의 전후 비교 다이어그램으로 정리한다.",
         "프로그램, 동선, 공간 경험의 관계를 선과 영역으로 단순화해 표시한다.",
       ];
+  const riskChecks = hasVillaSavoyeStudy
+    ? [
+        {
+          title: "현대 주거 기준의 접근성 검토",
+          type: "접근성",
+          reason:
+            "램프가 건축적 산책로로 작동하지만, 실제 이동 약자 접근성과 생활 동선으로도 적절한지 확인할 필요가 있습니다.",
+          checkMethod: "평면과 단면에서 진입부, 램프 경사, 수직 이동 동선을 함께 표시합니다.",
+          caution: "정확한 적합성은 관련 법규와 현행 기준을 별도로 확인해야 합니다.",
+        },
+        {
+          title: "옥상정원의 안전 및 유지관리 검토",
+          type: "운영 / 안전",
+          reason:
+            "옥상정원이 실제 생활 공간으로 사용될 경우 난간, 방수, 유지관리, 피난과 관련된 검토가 필요합니다.",
+          checkMethod: "단면도와 옥상 평면에 이용 범위, 접근 동선, 안전 경계, 관리 동선을 표시합니다.",
+          caution: "이 앱은 법적 판정이 아니라 검토 항목만 제안합니다.",
+        },
+      ]
+    : [
+        {
+          title: "사용자 동선과 피난 흐름 검토",
+          type: "피난 / 운영",
+          reason:
+            `${primary} 이슈가 동선이나 프로그램 배치와 연결될 수 있으므로, 실제 이용 흐름과 비상 시 이동 흐름이 충돌하지 않는지 확인이 필요합니다.`,
+          checkMethod: "평면도에 일반 동선, 운영 동선, 피난 방향을 구분해 표시하고 병목 구간을 검토합니다.",
+          caution: "피난 적합성은 현행 법규와 전문가 검토로 별도 확인해야 합니다.",
+        },
+        {
+          title: "접근성 및 용도 조건 확인",
+          type: "접근성 / 법규",
+          reason:
+            "프로그램 성격과 이용자 범위가 명확해질수록 접근성, 용도, 운영 기준을 함께 확인해야 설계 논리가 안정됩니다.",
+          checkMethod: "대지 조건, 프로그램 용도, 주요 출입구와 수직 동선을 정리한 뒤 관련 기준 확인 항목을 표시합니다.",
+          caution: "이 항목은 법적 판정이 아니라 설계 검토용 체크리스트입니다.",
+        },
+      ];
   return {
     summary: `${feedback.source} 피드백의 핵심은 ${primary} 관점에서 ${topic}의 설계 판단을 도면과 다이어그램으로 검증하라는 것입니다.`,
     categories,
@@ -2828,6 +3015,7 @@ function fallbackAnalysis(project, feedback) {
       hasVillaSavoyeStudy
         ? "초기안은 빌라 사보아의 상징적 요소를 인용하는 데 머물렀지만, 크리틱 이후 램프, 필로티, 옥상정원을 현대 주거의 생활 동선, 프라이버시, 환경 성능과 연결하는 방향으로 발전했다."
         : "초기안은 개념 설명에 비해 도면에서 설계 판단이 충분히 드러나지 않았다. 크리틱 이후 피드백을 작업 단위로 나누고, 핵심 도면과 발표 논리를 함께 수정하면서 설계의 변화 과정이 더 읽히도록 발전시켰다.",
+    riskChecks,
     riskQuestions: [
       hasVillaSavoyeStudy ? "원작의 어떤 가치를 유지하고, 어떤 부분을 현대적으로 바꾸려는가?" : "이 수정이 실제 공간 경험에서는 어떤 장면으로 드러나는가?",
       hasVillaSavoyeStudy ? "램프는 여전히 중심 동선인가, 아니면 상징적 장치인가?" : "기존 안과 비교했을 때 가장 크게 달라진 설계 판단은 무엇인가?",
@@ -2948,6 +3136,20 @@ function uniqueStrings(items) {
   });
 }
 
+function fillFirstFeedbackExample() {
+  const example = getFeedbackExampleForProject(getActiveProject());
+  const currentText = els.feedbackText.value.trim();
+  if (currentText && currentText !== example) {
+    const confirmed = window.confirm("현재 입력 중인 내용이 있습니다. 예시 문장으로 바꿀까요?");
+    if (!confirmed) return;
+  }
+
+  els.feedbackText.value = example;
+  renderInputLength();
+  els.feedbackText.focus();
+  showToast("예시 문장을 입력창에 넣었습니다. 저장하고 분석을 눌러 결과를 확인하세요.");
+}
+
 function clearFeedbackForm() {
   els.feedbackDate.value = today();
   els.feedbackImportance.value = "normal";
@@ -2987,6 +3189,22 @@ function projectFeedbackPlaceholder(project) {
   const haystack = `${project?.title || ""} ${project?.topic || ""} ${project?.stage || ""} ${project?.notes || ""}`;
   const template = PROJECT_TEMPLATES.find((item) => item.id !== "blank" && haystack.includes(item.name));
   return template?.feedbackPlaceholder || getProjectTemplate("blank").feedbackPlaceholder;
+}
+
+function updateFeedbackExampleGuide(project) {
+  if (!els.feedbackExampleText) return;
+  els.feedbackExampleText.textContent = getFeedbackExampleForProject(project);
+}
+
+function getFeedbackExampleForProject(project) {
+  const haystack = `${project?.title || ""} ${project?.topic || ""} ${project?.stage || ""} ${project?.notes || ""}`.toLowerCase();
+  if (/졸업설계/.test(haystack)) return FEEDBACK_EXAMPLES.graduation;
+  if (/공모전|제출물|심사\s*기준|마감/.test(haystack)) return FEEDBACK_EXAMPLES.competition;
+  if (/포트폴리오|서사|설명문/.test(haystack)) return FEEDBACK_EXAMPLES.portfolio;
+  if (/리노베이션|개선|현황|기존\s*공간/.test(haystack)) return FEEDBACK_EXAMPLES.renovation;
+  if (/도시|인프라|공공|보행|도시\s*맥락/.test(haystack)) return FEEDBACK_EXAMPLES.urbanInfra;
+  if (/스튜디오\s*크리틱|주간\s*스튜디오|매주\s*받은|다음\s*수업/.test(haystack)) return FEEDBACK_EXAMPLES.studio;
+  return FEEDBACK_EXAMPLES.default;
 }
 
 function createNewProject(options = {}) {

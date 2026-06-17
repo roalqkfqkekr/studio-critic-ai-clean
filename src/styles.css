@@ -1489,6 +1489,42 @@ select:focus {
   font-size: 0.82rem;
 }
 
+.feedback-example-card {
+  display: grid;
+  gap: 0.68rem;
+  margin-top: 0.78rem;
+  padding: 0.88rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.feedback-example-card h3 {
+  margin: 0 0 0.22rem;
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.feedback-example-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.feedback-example-quote {
+  padding: 0.72rem 0.78rem;
+  border-left: 3px solid var(--primary);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-2) !important;
+  overflow-wrap: anywhere;
+}
+
+.feedback-example-card button {
+  justify-self: start;
+}
+
 .form-actions,
 .item-actions,
 .analysis-toolbar,
@@ -1705,6 +1741,53 @@ select:focus {
 .analysis-action p {
   margin: 0;
   color: var(--muted);
+}
+
+.risk-check-section {
+  margin: 0.84rem 0;
+  padding: 0.76rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.risk-check-list {
+  display: grid;
+  gap: 0.58rem;
+}
+
+.risk-check-card {
+  display: grid;
+  gap: 0.42rem;
+  padding: 0.72rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warning);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.risk-check-card strong {
+  line-height: 1.35;
+}
+
+.risk-check-card p,
+.risk-check-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.risk-check-card b {
+  display: block;
+  margin-bottom: 0.12rem;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+}
+
+.risk-check-note {
+  margin-top: 0.64rem;
+  padding-top: 0.62rem;
+  border-top: 1px dashed var(--line);
+  font-size: 0.8rem;
 }
 
 .analysis-summary {
@@ -2670,6 +2753,7 @@ textarea {
 
   .section-heading > button,
   .helper-row button,
+  .feedback-example-card button,
   .form-actions button {
     width: 100%;
   }
