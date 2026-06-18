@@ -18,9 +18,9 @@
           <span>Studio Critic AI</span>
         </a>
         <nav class="landing-nav" aria-label="랜딩 메뉴">
-          <a href="#/landing" data-scroll-target="landingFeatures">기능</a>
-          <a href="#/landing" data-scroll-target="landingWorkflow">사용 흐름</a>
-          <a href="#/landing" data-scroll-target="landingDemo">데모</a>
+          <a href="#/landing" data-scroll-target="landingFeatures">프로세스</a>
+          <a href="#/landing" data-scroll-target="landingUseCases">사용 사례</a>
+          <a href="#/landing" data-scroll-target="landingWorkflow">데모</a>
         </nav>
         <button class="primary landing-start" data-open-start type="button">무료로 시작하기</button>
       </header>
@@ -29,9 +29,12 @@
         <section class="landing-hero" aria-labelledby="landingTitle">
           <div class="landing-copy">
             <p class="landing-kicker">Architecture critique workflow</p>
-            <h1 id="landingTitle">크리틱 피드백을 설계 작업으로 바꾸세요</h1>
+            <h1 id="landingTitle">
+              <span>피드백을 기록하고,</span>
+              <span>설계 작업으로 실행하세요.</span>
+            </h1>
             <p class="landing-description">
-              교수 피드백을 AI가 설계 진단, 도면 작업, 발표 문장, 포트폴리오 서사로 정리합니다.
+              크리틱 원문을 입력하면 AI가 설계 진단, 작업 카드, 다음 크리틱 준비, 포트폴리오 문장으로 정리합니다.
             </p>
             <div class="landing-actions">
               <button class="primary" data-open-start type="button">무료로 시작하기</button>
@@ -42,81 +45,145 @@
               <span>Firebase/Gemini 연결 선택 가능</span>
               <span>Mock 모드 사용 가능</span>
             </div>
+            <p class="landing-philosophy">크리틱은 메모가 아니라 다음 설계의 재료입니다.</p>
           </div>
 
-          <aside class="landing-preview" id="landingDemo" aria-label="앱 미리보기">
-            <div class="preview-toolbar">
-              <span class="preview-dot"></span>
-              <span class="preview-dot"></span>
-              <span class="preview-dot"></span>
+          <aside class="landing-preview critique-flow-preview" id="landingDemo" aria-label="앱 미리보기">
+            <div class="preview-heading">
+              <span>Live workflow</span>
+              <strong>Critique → Action</strong>
             </div>
-            <div class="preview-grid">
-              <article class="preview-card preview-input">
-                <span class="mini-icon icon-feedback" aria-hidden="true"></span>
-                <p>피드백 입력</p>
-                <strong>“동선과 단면 관계가 아직 약합니다.”</strong>
+            <div class="preview-flow" aria-label="피드백이 작업으로 바뀌는 흐름">
+              <article class="preview-step preview-input">
+                <span class="preview-step-number">01</span>
+                <div>
+                  <p>Feedback</p>
+                  <strong>“동선과 단면 관계가 아직 약합니다.”</strong>
+                </div>
               </article>
-              <article class="preview-card preview-analysis">
-                <span class="mini-icon icon-spark" aria-hidden="true"></span>
-                <p>AI 설계 진단</p>
-                <strong>동선 위계와 공간 경계가 도면에서 충분히 설명되지 않습니다.</strong>
+              <article class="preview-step preview-analysis">
+                <span class="preview-step-number">02</span>
+                <div>
+                  <p>Diagnosis</p>
+                  <strong>동선 위계와 공간 경계가 도면에서 충분히 설명되지 않습니다.</strong>
+                </div>
               </article>
-              <article class="preview-card preview-task">
-                <span class="mini-icon icon-checklist" aria-hidden="true"></span>
-                <p>작업 카드 생성</p>
-                <strong>평면 동선 분리, 단면 경계 표시, 발표 문장 정리</strong>
+              <article class="preview-step preview-task">
+                <span class="preview-step-number">03</span>
+                <div>
+                  <p>Action</p>
+                  <ul>
+                    <li>평면 동선 분리</li>
+                    <li>단면 경계 표시</li>
+                    <li>발표 문장 정리</li>
+                  </ul>
+                </div>
               </article>
             </div>
           </aside>
         </section>
 
-        <section class="landing-feature-grid" id="landingFeatures" aria-label="주요 기능">
-          <article class="landing-feature-card">
-            <span class="card-icon icon-feedback" aria-hidden="true"></span>
-            <h2>피드백 정리</h2>
-            <p>크리틱에서 들은 말을 저장하고 출처, 중요도, 키워드로 분류합니다.</p>
-          </article>
-          <article class="landing-feature-card">
-            <span class="card-icon icon-spark" aria-hidden="true"></span>
-            <h2>AI 설계 진단</h2>
-            <p>단순 요약이 아니라 설계상 문제와 다음 검토 기준을 제안합니다.</p>
-          </article>
-          <article class="landing-feature-card">
-            <span class="card-icon icon-checklist" aria-hidden="true"></span>
-            <h2>작업 카드 생성</h2>
-            <p>평면, 단면, 다이어그램, 발표 작업으로 바로 실행할 일을 나눕니다.</p>
-          </article>
+        <section class="landing-process" id="landingFeatures" aria-label="주요 기능">
+          <div class="landing-section-head landing-section-head-wide">
+            <p class="landing-kicker">Process</p>
+            <h2>크리틱을 실행 가능한 설계 작업으로 바꾸는 흐름</h2>
+          </div>
+          <div class="landing-feature-grid">
+            <article class="landing-feature-card">
+              <span class="card-icon icon-feedback" aria-hidden="true"></span>
+              <span class="process-number">01</span>
+              <h2>기록</h2>
+              <p>크리틱 원문을 그대로 저장합니다.</p>
+            </article>
+            <article class="landing-feature-card">
+              <span class="card-icon icon-spark" aria-hidden="true"></span>
+              <span class="process-number">02</span>
+              <h2>진단</h2>
+              <p>AI가 설계 문제와 검토 기준을 정리합니다.</p>
+            </article>
+            <article class="landing-feature-card">
+              <span class="card-icon icon-checklist" aria-hidden="true"></span>
+              <span class="process-number">03</span>
+              <h2>작업</h2>
+              <p>도면, 단면, 다이어그램, 발표문 작업으로 나눕니다.</p>
+            </article>
+            <article class="landing-feature-card">
+              <span class="card-icon icon-board" aria-hidden="true"></span>
+              <span class="process-number">04</span>
+              <h2>준비</h2>
+              <p>다음 크리틱에서 보여줄 자료와 예상 질문을 정리합니다.</p>
+            </article>
+            <article class="landing-feature-card">
+              <span class="card-icon icon-doc" aria-hidden="true"></span>
+              <span class="process-number">05</span>
+              <h2>서사</h2>
+              <p>포트폴리오에 넣을 설계 발전 과정을 문장화합니다.</p>
+            </article>
+          </div>
         </section>
 
-        <section class="landing-workflow" id="landingWorkflow" aria-label="사용 흐름">
-          <div class="landing-section-head">
-            <p class="landing-kicker">Workflow</p>
-            <h2>피드백에서 다음 크리틱 준비까지</h2>
+        <section class="landing-use-cases" id="landingUseCases" aria-label="사용 사례">
+          <div class="landing-section-head landing-section-head-wide">
+            <p class="landing-kicker">Use Cases</p>
+            <h2>스튜디오 상황에 맞게 피드백을 정리합니다</h2>
           </div>
-          <div class="landing-workflow-grid">
+          <div class="landing-use-case-grid">
             <article>
-              <span>1</span>
-              <strong>피드백 입력</strong>
-              <p>크리틱 원문을 그대로 기록합니다.</p>
+              <span>Studio</span>
+              <strong>설계 스튜디오</strong>
+              <p>매주 쌓이는 크리틱을 다음 수업 전 작업 단위로 정리합니다.</p>
             </article>
             <article>
-              <span>2</span>
-              <strong>AI 진단 확인</strong>
-              <p>설계상 문제와 검토 기준을 확인합니다.</p>
+              <span>Thesis</span>
+              <strong>졸업설계</strong>
+              <p>긴 프로젝트의 피드백과 변경 방향을 누적합니다.</p>
             </article>
             <article>
-              <span>3</span>
-              <strong>작업 카드 실행</strong>
-              <p>도면, 다이어그램, 발표 작업으로 옮깁니다.</p>
+              <span>Competition</span>
+              <strong>공모전</strong>
+              <p>심사 기준과 제출물 구성을 작업 카드로 분리합니다.</p>
             </article>
             <article>
-              <span>4</span>
-              <strong>다음 크리틱 준비</strong>
-              <p>예상 질문과 발표 순서를 정리합니다.</p>
+              <span>Portfolio</span>
+              <strong>포트폴리오 정리</strong>
+              <p>설계 발전 과정을 포트폴리오 문장으로 정리합니다.</p>
             </article>
           </div>
-          <button class="primary landing-bottom-action" data-open-start type="button">앱 시작하기</button>
         </section>
+
+        <section class="landing-demo-preview" id="landingWorkflow" aria-label="데모 프로젝트 미리보기">
+          <div class="landing-section-head">
+            <p class="landing-kicker">Demo Project</p>
+            <h2>빌라 사보아 재해석 스튜디오</h2>
+            <p>
+              르 코르뷔지에의 빌라 사보아를 현대 주거성, 접근성, 프라이버시, 환경 성능 관점에서 다시 검토하는 교육용 샘플 프로젝트입니다.
+            </p>
+          </div>
+          <div class="landing-demo-grid demo-result-board">
+            <article class="demo-result-card">
+              <span class="card-icon icon-spark" aria-hidden="true"></span>
+              <p class="landing-demo-label">AI 설계 진단</p>
+              <strong>램프, 필로티, 옥상정원을 현대 주거의 생활 동선과 환경 성능 관점에서 다시 검토해야 합니다.</strong>
+            </article>
+            <article class="demo-result-card">
+              <span class="card-icon icon-checklist" aria-hidden="true"></span>
+              <p class="landing-demo-label">작업 카드</p>
+              <ul>
+                <li>램프 동선 비교 다이어그램 작성</li>
+                <li>공적/사적 영역 위계 표시</li>
+                <li>옥상정원 사용 장면 단면화</li>
+              </ul>
+            </article>
+          </div>
+          <button class="primary landing-bottom-action" data-start-mode="demo" type="button">데모 보기</button>
+        </section>
+
+        <footer class="landing-footer" aria-label="공개 데모 정보">
+          <span>Local-first</span>
+          <span>Demo Mode</span>
+          <span>Gemini optional</span>
+          <span>GitHub Pages</span>
+        </footer>
       </main>
 
       <section

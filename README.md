@@ -1,110 +1,186 @@
-# studio-critic-ai
+# Studio Critic AI
 
-`studio-critic-ai`는 건축 설계 스튜디오의 크리틱 피드백을 다음 작업 리스트, 다음 크리틱 준비 항목, 발표 문장, 포트폴리오 서사로 바꾸는 정적 AI 웹앱 MVP입니다.
+건축 설계 크리틱 피드백을 설계 진단, 작업 카드, 다음 크리틱 준비, 발표 문장, 포트폴리오 서사로 변환하는 AI 스튜디오 매니저형 웹앱
 
-목표는 ChatGPT보다 더 똑똑한 범용 AI를 만드는 것이 아니라, 사용자가 매번 프로젝트 맥락과 원하는 출력 형식을 반복해서 설명하는 시간을 줄이는 것입니다.
+## 프로젝트 소개
 
-## ARCHIVE AI와 다른 점
+Studio Critic AI는 건축학과 학생이 크리틱 이후 흩어진 피드백을 실행 가능한 설계 작업으로 전환할 수 있도록 만든 로컬 기반 AI 웹앱입니다.
 
-기존 ARCHIVE AI가 건축 의사결정 기록 시스템에 가깝다면, `studio-critic-ai`는 크리틱 직후 바로 실행할 수 있는 스튜디오 매니저에 가깝습니다.
+교수, 팀원, 클라이언트, 본인 메모 등에서 나온 피드백을 입력하면 AI가 설계상 문제를 진단하고, 다음에 해야 할 작업, 도면/다이어그램 산출물, 다음 크리틱 준비 항목, 발표 문장, 포트폴리오 서사로 정리합니다.
 
-- 피드백을 단순 보관하지 않고 작업 카드로 변환합니다.
-- 건축 전용 카테고리로 피드백을 분류합니다.
-- 다음 크리틱에 필요한 도면, 다이어그램, 예상 질문을 정리합니다.
-- 누적 피드백과 완료 작업을 바탕으로 포트폴리오용 설계 발전 서사를 만듭니다.
+이 프로젝트의 목표는 ChatGPT보다 더 똑똑한 AI를 만드는 것이 아니라, 매번 긴 프로젝트 맥락을 설명하고 결과를 따로 정리해야 하는 과정을 줄이는 것입니다.
 
-## 핵심 기능
+## 미리보기
 
-- SaaS형 Landing Page
-- 시작 방식 선택: 데모 프로젝트, 새 프로젝트, JSON 백업 불러오기
-- GitHub Pages에 안전한 hash routing
-- 프로젝트 생성 및 편집
-- 프로젝트 삭제
-- 교수 / 튜터 / 본인 / 클라이언트 / 기타 피드백 입력
-- 피드백 선택, 삭제, 재분석
-- Firebase AI Logic + Gemini Developer API 연결 구조
-- Firebase 설정이 없을 때 Mock 모드 자동 fallback
-- AI 분석 카드 생성
-- 건축 전용 카테고리 태그 표시
+<img src="docs/screenshots/landing.png" alt="Landing Page" width="800">
+
+<img src="docs/screenshots/home.png" alt="Home View" width="800">
+
+<img src="docs/screenshots/feedback.png" alt="Feedback View" width="800">
+
+<img src="docs/screenshots/analysis.png" alt="Analysis View" width="800">
+
+## 해결하려는 문제
+
+건축 설계 크리틱 이후에는 다음과 같은 문제가 자주 발생합니다.
+
+- 교수 피드백은 들었지만 무엇부터 수정해야 할지 정리되지 않음
+- 피드백이 도면 작업, 다이어그램 작업, 발표 문장으로 바로 연결되지 않음
+- 다음 크리틱 전까지 보여줘야 할 자료가 명확하지 않음
+- 포트폴리오를 만들 때 설계가 어떻게 발전했는지 서사화하기 어려움
+- 매번 AI에게 프로젝트 맥락과 출력 형식을 다시 설명해야 함
+
+Studio Critic AI는 이 과정을 하나의 고정된 건축 설계 워크플로우로 정리합니다.
+
+## 주요 기능
+
+### 프로젝트 관리
+
+- 프로젝트 생성 / 선택 / 삭제
+- 졸업설계, 공모전, 스튜디오 크리틱, 포트폴리오 정리, 리노베이션, 도시/인프라 프로젝트 템플릿
+- localStorage 기반 저장
+- JSON 백업 / 불러오기
+- 샘플 프로젝트 복원
+- 전체 초기화
+
+### 피드백 관리
+
+- 날짜, 출처, 중요도, 키워드, 원문 입력
+- 피드백 타임라인
+- 피드백 재분석 / 삭제
+- 긴 피드백과 AI 진단 결과 내부 스크롤 처리
+
+### AI 분석
+
+- Firebase AI Logic + Gemini 기반 텍스트 분석
+- Firebase config가 없는 환경에서는 Demo/Mock Mode 작동
+- 분석 중 오버레이
+- 무관 입력 가드
+- 프롬프트 조작성 입력 방어
+- 법규/검토 리스크 힌트
+
+### 작업 카드
+
 - AI 분석 결과 기반 작업 카드 자동 생성
-- 작업 상태 변경 및 작업 카드 삭제: 해야 함 / 진행 중 / 완료 / 보류
-- 다음 크리틱 준비 패널 생성
-- 포트폴리오 서사 초안 생성
-- localStorage 자동 저장
-- JSON 데이터 내보내기 / 불러오기
-- localStorage 초기화 및 샘플 데이터 복원
+- 해야 함 / 진행 중 / 완료 / 보류 상태 관리
+- 작업 삭제
+- Tasks View 칸반형 표시
 
-## 현재 기본 상태
+### 결과 활용
 
-현재 기본 상태는 Mock 모드입니다.
+- 분석 결과 복사
+- 작업 리스트 복사
+- 다음 크리틱 준비 내용 복사
+- 포트폴리오 문장 복사
+- Markdown 리포트 저장
 
-GitHub Pages 같은 공개 정적 배포에서는 `src/firebaseConfig.js`를 올리지 않는 것이 기본이며, 이 경우 앱은 `Demo Mode`로 동작합니다. 실제 Firebase/Gemini 연결 전에도 Landing Page, 시작 방식 선택, View 전환, 피드백 입력, Mock 분석, 작업 카드 생성, JSON 백업/불러오기 흐름을 테스트할 수 있습니다.
+## 화면 구성
 
-실제 Gemini 호출을 사용하려면 `src/firebaseConfig.example.js`를 `src/firebaseConfig.js`로 복사한 뒤 Firebase 설정값을 입력해야 합니다.
+- Landing: 앱 소개 및 시작
+- Start: 데모, 새 프로젝트, 백업 불러오기 선택
+- Home: 빠른 피드백 입력, 현재 프로젝트 요약, 최근 AI 진단, 오늘 할 작업
+- Feedback: 피드백 입력과 타임라인 관리
+- Analysis: 선택 피드백의 상세 AI 분석
+- Tasks: 작업 카드 칸반 보드
+- Critic Prep: 다음 크리틱 준비 항목 생성
+- Portfolio: 포트폴리오 서사 생성
+- Settings: 프로젝트 설정, 백업, 초기화, Firebase 상태 확인
 
-`src/firebaseConfig.js`는 `.gitignore`에 포함되어 있으므로 GitHub에 올리지 않습니다.
+## 기술 구조
 
-## 화면 구조와 hash routing
+- HTML
+- CSS
+- JavaScript
+- localStorage
+- Firebase AI Logic
+- Gemini Developer API
+- GitHub Pages
 
-앱은 하나의 `index.html` 안에서 화면을 전환하는 정적 SPA입니다.
-
-- `#/landing`: 방문자용 Landing Page
-- `#/start`: 시작 방식 선택 화면
-- `#/app/home`: Home
-- `#/app/feedback`: Feedback
-- `#/app/analysis`: Analysis
-- `#/app/tasks`: Tasks
-- `#/app/critic-prep`: Critic Prep
-- `#/app/portfolio`: Portfolio
-- `#/app/settings`: Settings
-
-GitHub Pages에서 URL path routing을 쓰면 새로고침 시 404가 날 수 있으므로, 이 프로젝트는 hash route를 사용합니다. 사이드바 메뉴와 시작 버튼은 hash를 변경하고, 브라우저 뒤로가기/앞으로가기도 같은 라우팅 흐름을 따릅니다.
-
-첫 접속 시 `studioCriticEntered` 값이 없으면 `#/landing`으로 열립니다. 이미 앱에 진입한 브라우저에서는 기본값이 `#/app/home`입니다. 단, 주소창에 hash가 직접 들어 있으면 그 hash가 우선됩니다.
+별도의 백엔드 서버, Firestore, Firebase Auth, Firebase Storage 없이 정적 웹앱 구조로 작동합니다.
 
 ## 무료 운영 구조
 
-이 MVP는 추가 서버 비용이 거의 들지 않도록 정적 웹앱으로 구성했습니다.
+이 MVP는 추가 서버 비용 없이 작동하는 구조를 목표로 합니다.
 
-- 별도 Express, Render, Cloud Functions 서버 없음
-- Firestore, Firebase Storage, Firebase Auth 미사용
-- 데이터 저장은 브라우저 `localStorage` 사용
-- 정적 파일만으로 GitHub Pages 또는 Firebase Hosting 배포 가능
-- 텍스트 기반 Gemini 호출만 사용
-- 이미지 생성, 영상 생성, 고급 음성 분석, 대용량 PDF 분석 제외
+- 기본 데이터 저장: 브라우저 localStorage
+- 공개 배포: GitHub Pages
+- AI 분석: Firebase AI Logic + Gemini Developer API
+- Firebase 설정이 없는 공개 배포 환경: Demo/Mock Mode
 
-## Firebase Spark 전제
+주의: localStorage 기반이므로 브라우저를 바꾸거나 저장소를 초기화하면 데이터가 사라질 수 있습니다. 중요한 데이터는 JSON 백업 기능으로 저장해야 합니다.
 
-Firebase는 Spark 플랜 기준으로 사용할 수 있는 범위만 가정합니다.
+## Demo Mode
 
-- Hosting을 쓰더라도 정적 배포만 전제합니다.
-- Firestore, Storage, Auth는 MVP에서 사용하지 않습니다.
-- Cloud Billing 또는 Blaze 플랜 연결이 필수인 구조를 만들지 않았습니다.
-- Gemini Developer API free tier 한도에 도달하거나 호출이 실패하면 Mock 분석 결과로 대체합니다.
+GitHub Pages 공개 배포본에는 실제 `src/firebaseConfig.js`가 포함되지 않습니다.
 
-## Firebase AI Logic / Gemini 설정
+따라서 공개 데모에서는 Firebase/Gemini 실제 호출 대신 Demo/Mock Mode로 작동합니다.
 
-`src/app.js`는 Firebase 설정 파일이 있을 때만 Firebase AI Logic Web SDK를 동적으로 불러옵니다. 설정이 없거나 호출에 실패하면 앱은 멈추지 않고 Mock 모드로 계속 실행됩니다.
+Demo Mode에서도 다음 흐름은 체험할 수 있습니다.
 
-1. Firebase Console에서 프로젝트를 만들고 웹 앱 config 값을 복사합니다.
-2. Firebase Console의 AI Services 또는 AI Logic 설정에서 Gemini Developer API provider를 준비합니다.
-3. `src/firebaseConfig.example.js`를 `src/firebaseConfig.js`로 복사합니다.
-4. `src/firebaseConfig.js`에 본인의 Firebase 설정값을 입력합니다.
-5. 필요하면 `src/app.js` 상단의 `MODEL_NAME` 값을 현재 지원되는 경량 텍스트 모델명으로 바꿉니다.
-6. 브라우저에서 앱을 열고 피드백을 입력한 뒤 `저장하고 분석` 또는 `선택 피드백 분석`을 실행합니다.
+- 샘플 프로젝트 보기
+- 피드백 입력
+- Mock 분석 결과 확인
+- 작업 카드 생성
+- 복사 기능
+- Markdown 리포트 저장
+- JSON 백업 / 불러오기
+
+실제 Gemini 분석은 로컬 환경에서 `src/firebaseConfig.js`를 설정한 뒤 테스트할 수 있습니다.
+
+## 로컬 실행 방법
+
+Windows 기준으로 프로젝트 폴더에서 정적 파일 서버를 실행합니다.
+
+```bash
+cd "C:\Users\j01\Documents\studio-critic-ai"
+npx serve . -l 4173
+```
+
+터미널에 표시되는 Local 주소로 접속합니다.
+
+```txt
+http://localhost:4173
+```
+
+Python이 설치되어 있다면 아래 방식도 사용할 수 있습니다.
+
+```bash
+python -m http.server 4173
+```
+
+Python 실행 파일명이 `python3`인 환경에서는 다음 명령을 사용할 수 있습니다.
+
+```bash
+python3 -m http.server 4173
+```
+
+## Firebase / Gemini 설정 방법
+
+1. Firebase Console에서 프로젝트를 생성합니다.
+2. Web App을 등록합니다.
+3. Firebase AI Logic에서 Gemini Developer API provider를 설정합니다.
+4. `src/firebaseConfig.example.js`를 복사해 `src/firebaseConfig.js`를 만듭니다.
+5. Firebase Console의 Web App config 값을 붙여넣습니다.
+
+`src/firebaseConfig.js` 예시:
 
 ```js
-// src/firebaseConfig.js 예시
-// 실제 값을 공개 저장소에 커밋하지 마세요.
 export const firebaseConfig = {
   apiKey: "YOUR_FIREBASE_WEB_API_KEY",
   authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
   projectId: "YOUR_PROJECT_ID",
-  appId: "YOUR_FIREBASE_APP_ID",
+  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_FIREBASE_APP_ID"
 };
 ```
 
-주의: 실제 API 키나 Firebase 설정값을 공개 GitHub 저장소에 직접 올리지 마세요. `src/firebaseConfig.js`, 루트의 `firebaseConfig.js`, `.env`, `.env.*`는 `.gitignore`에 포함되어 있습니다. 예시 파일인 `src/firebaseConfig.example.js`만 저장소에 포함합니다.
+주의:
+
+- `<script>` 태그를 넣지 마세요.
+- `initializeApp()` 코드를 넣지 마세요.
+- Gemini API key를 직접 넣지 마세요.
+- 이 파일은 Git에 커밋하면 안 됩니다.
 
 ## Gemini 분석 실패: Firebase API 키가 유효하지 않습니다
 
@@ -121,10 +197,10 @@ export const firebaseConfig = {
 
 해결 순서:
 
-1. Firebase Console → Project settings → General → Your apps로 이동
+1. Firebase Console > Project settings > General > Your apps로 이동
 2. 현재 웹앱의 SDK setup config를 다시 복사
 3. `src/firebaseConfig.js`의 `firebaseConfig` 객체를 교체
-4. Firebase Console → AI Logic에서 Gemini Developer API provider 설정 완료 여부 확인
+4. Firebase Console > AI Logic에서 Gemini Developer API provider 설정 완료 여부 확인
 5. 몇 분 기다린 뒤 로컬 서버 새로고침
 6. 다시 피드백 분석 실행
 
@@ -133,6 +209,19 @@ export const firebaseConfig = {
 - Gemini API key를 직접 `src/firebaseConfig.js`에 넣지 마세요.
 - `src/firebaseConfig.js`는 GitHub에 커밋하지 마세요.
 - 공개 배포에서 실제 AI 연결을 켤 경우 App Check 등 보호 설정을 검토하세요.
+
+## 보안 주의사항
+
+다음 파일은 절대 공개 저장소에 커밋하지 마세요.
+
+- `src/firebaseConfig.js`
+- `.env`
+- `.env.local`
+- `.env.production`
+
+현재 `.gitignore`는 위 파일들이 커밋되지 않도록 설정되어 있습니다.
+
+GitHub Desktop에서 커밋하기 전 Changes 목록에 `src/firebaseConfig.js`가 없는지 반드시 확인하세요.
 
 ## localStorage 주의사항
 
@@ -144,13 +233,54 @@ export const firebaseConfig = {
 - 중요한 작업 기록은 Settings의 `JSON 백업`으로 저장하세요.
 - 백업 파일은 Settings의 `백업 불러오기`로 다시 복원할 수 있습니다.
 
-## JSON 백업 방법
+## JSON 백업 / 불러오기
 
 Settings View의 `JSON 백업` 버튼을 누르면 현재 프로젝트, 피드백, 분석 결과, 작업 카드가 하나의 JSON 파일로 저장됩니다.
 
 복원할 때는 `백업 불러오기`를 누르고 이전에 내보낸 백업 파일을 선택합니다. 다른 앱에서 만든 JSON이나 구조가 깨진 파일은 불러올 수 없습니다.
 
-Landing Page의 시작 방식 선택에서 `백업 불러오기`를 고르면 앱이 Settings View로 이동하고 백업 영역을 강조합니다.
+Landing Page의 시작 방식 선택에서 `백업 불러오기`를 고르면 앱이 Settings View로 이동하고 백업 영역을 확인할 수 있습니다.
+
+## Markdown 리포트 저장
+
+Settings View 또는 Portfolio View에서 `Markdown 리포트 저장`을 누르면 현재 프로젝트의 핵심 정보가 `.md` 파일로 저장됩니다.
+
+내보내는 내용:
+
+- 프로젝트 정보
+- 피드백 요약
+- AI 설계 진단
+- 작업 리스트
+- 다음 크리틱 준비
+- 포트폴리오 서사
+
+## 샘플 프로젝트
+
+공개 데모에는 사용자의 실제 작업과 무관한 교육용 샘플 프로젝트가 포함되어 있습니다.
+
+샘플 프로젝트:
+
+**빌라 사보아 재해석 스튜디오**
+
+르 코르뷔지에의 빌라 사보아를 현대 주거성, 접근성, 프라이버시, 환경 성능 관점에서 다시 해석하는 사례 분석 프로젝트입니다.
+
+실제 사진, 도면, 평면도 이미지는 포함하지 않고 텍스트 기반 교육용 예시만 사용합니다.
+
+## 법규/검토 리스크 안내
+
+Studio Critic AI는 법규 자동 판정기가 아닙니다.
+
+AI 분석 결과의 법규/검토 리스크는 설계자가 다음 크리틱이나 검토 전에 확인하면 좋을 항목을 제안하는 체크리스트입니다.
+
+예:
+
+- 피난 동선 확인
+- 접근성 검토
+- 주차 기준 확인
+- 방화구획 검토
+- 용도지역 / 지구단위계획 확인
+
+실제 인허가 및 적합성 판단은 최신 법령, 지자체 조례, 토지이음, 세움터, 전문가 검토를 통해 확인해야 합니다.
 
 ## GitHub에 올릴 핵심 파일
 
@@ -163,46 +293,7 @@ Landing Page의 시작 방식 선택에서 `백업 불러오기`를 고르면 �
 - `README.md`
 - `.gitignore`
 
-다음 파일은 이전 Flutter/LossLens 프로젝트 잔여물이므로 `studio-critic-ai` 배포에는 필요하지 않습니다.
-
-- `pubspec.yaml`
-- `pubspec.lock`
-- `analysis_options.yaml`
-- `android/`
-- `ios/`
-- `lib/`
-- `windows/`
-- `server/`
-- `docs/`
-- `installer/`
-- `tool/`
-- `assets/branding/`
-
-`.gitignore`는 이 잔여 파일들이 새로 추가되는 것을 막도록 보강되어 있습니다. 다만 이미 Git이 추적 중인 파일은 `.gitignore`만으로 커밋 대상에서 빠지지 않습니다. GitHub Desktop에 올리기 전 변경 파일 목록에서 위 잔여 파일이 포함되어 있지 않은지 확인하세요.
-
 GitHub Pages 배포 전에는 실제 API 키가 포함된 `src/firebaseConfig.js`가 커밋되지 않았는지 반드시 확인하세요.
-
-## 실행 방법
-
-별도 빌드 과정은 필요 없습니다. 정적 파일 서버만 실행하면 됩니다.
-
-```bash
-python -m http.server 4173
-```
-
-브라우저에서 다음 주소를 엽니다.
-
-```text
-http://localhost:4173
-```
-
-Python 실행 파일명이 `python3`인 환경에서는 다음 명령을 사용합니다.
-
-```bash
-python3 -m http.server 4173
-```
-
-Windows에서 `python` 또는 `python3` 명령이 인식되지 않으면 Python을 설치하거나, 같은 폴더를 서비스할 수 있는 다른 정적 파일 서버를 사용해도 됩니다.
 
 ## 배포 방법
 
@@ -212,11 +303,9 @@ Windows에서 `python` 또는 `python3` 명령이 인식되지 않으면 Python�
 2. Source를 현재 브랜치의 루트 폴더로 설정합니다.
 3. 배포 후 `index.html`이 진입점으로 사용됩니다.
 
-공개 저장소에 올리기 전 `src/firebaseConfig.js`, `.env`, `.env.*`, 실제 API 키가 포함된 파일이 커밋 대상에 들어가지 않았는지 확인하세요.
+이 프로젝트는 GitHub Pages에서 새로고침 404를 피하기 위해 hash routing을 사용합니다.
 
-GitHub Pages에서는 다음 hash URL을 직접 열거나 새로고침해도 `index.html` 안에서 안전하게 처리됩니다.
-
-```text
+```txt
 #/landing
 #/start
 #/app/home
@@ -228,7 +317,7 @@ GitHub Pages에서는 다음 hash URL을 직접 열거나 새로고침해도 `in
 #/app/settings
 ```
 
-공개 데모 배포에서는 `src/firebaseConfig.js`를 올리지 않아도 됩니다. 이 경우 상단 상태는 `Demo Mode · Firebase 없이 로컬 체험 중`으로 표시되고, 분석은 Mock 결과로 생성됩니다.
+공개 데모 배포에서는 `src/firebaseConfig.js`를 올리지 않아도 됩니다. 이 경우 앱은 Demo/Mock Mode로 작동합니다.
 
 ### Firebase Hosting
 
@@ -241,34 +330,36 @@ firebase deploy --only hosting
 
 루트 배포를 선택하거나, 필요하면 `index.html`과 `src/`를 hosting public 폴더로 복사하세요.
 
-## 향후 확장 계획
-
-- Firestore 저장
-- 로그인
-- PDF 분석
-- 음성 입력
-- 이미지 기반 패널 피드백
-- 팀 작업 기능
-
 ## 테스트
 
 ```bash
 node --check src/app.js
 git diff --check
 git check-ignore -v src/firebaseConfig.js firebaseConfig.js .env .env.local
-python -m http.server 4173
 ```
 
 브라우저 확인 주소:
 
-```text
+```txt
 http://localhost:4173
 ```
 
 라우팅 확인 예:
 
-```text
+```txt
 http://localhost:4173/#/landing
 http://localhost:4173/#/start
 http://localhost:4173/#/app/tasks
 ```
+
+## 향후 확장 계획
+
+- Firebase Auth 기반 로그인
+- Firestore 기반 클라우드 저장
+- 사용자별 프로젝트 동기화
+- 팀 협업 기능
+- PDF / 이미지 기반 패널 피드백 분석
+- 음성 크리틱 입력
+- 선택한 피드백만 Markdown 저장
+- 발표문 전용 생성 기능
+- 작업 검색 / 필터

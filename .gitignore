@@ -67,3 +67,9 @@ assets/branding/
 
 # Local review artifacts
 screenshots/
+
+# Public README screenshots
+!docs/
+docs/*
+!docs/screenshots/
+!docs/screenshots/*.png
